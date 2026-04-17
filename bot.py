@@ -19,8 +19,8 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN", "BU_YERGA_BOT_TOKENINGIZ")
-CHANNEL_ID = "@RadiologyAI"
-CHANNEL_LOG = "@RadiologyAI"
+CHANNEL_ID = "@RadiologyGroupChat"
+CHANNEL_LOG = "@RadiologyGroupChat"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 queue = AnalysisQueue()
@@ -115,7 +115,7 @@ async def analyze_with_gemini(image_bytes, lang):
     }
     prompt = prompts.get(lang, prompts["uz"])
     img_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [
             {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
