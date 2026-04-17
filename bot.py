@@ -3,7 +3,7 @@ import logging
 import base64
 import httpx
 import os
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton,
     InlineKeyboardMarkup, KeyboardButton
@@ -12,7 +12,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters, CallbackQueryHandler
 )
-from database import db
+from database import db, FREE_DAILY_LIMIT
 from queue_manager import AnalysisQueue
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -22,6 +22,17 @@ TOKEN          = os.getenv("BOT_TOKEN", "BOT_TOKENINGIZ")
 SUBSCRIBE_CH   = os.getenv("SUBSCRIBE_CHANNEL", "@RadiologyGroupChat")
 LOG_CH         = os.getenv("LOG_CHANNEL", "@RadialogyAI")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+ADMIN_ID       = int(os.getenv("ADMIN_ID", "0"))   # sizning Telegram ID
+
+# Payme/Click to'lov uchun
+PAYME_MERCHANT = os.getenv("PAYME_MERCHANT_ID", "")
+CLICK_MERCHANT = os.getenv("CLICK_MERCHANT_ID", "")
+CLICK_SERVICE  = os.getenv("CLICK_SERVICE_ID", "")
+
+# Premium narx (so'm)
+PREMIUM_1M  = 29900   # 1 oy
+PREMIUM_3M  = 79900   # 3 oy
+PREMIUM_12M = 249900  # 1 yil
 
 queue = AnalysisQueue()
 
@@ -34,144 +45,375 @@ async def check_subscription(bot, user_id):
         return False
 
 # ─── TEXTS ────────────────────────────────────────────────────────────────────
-def t(lang, key):
+def t(lang, key, **kw):
     texts = {
         "uz": {
-            "welcome":     "👋 *Radiology AI*ga xush kelibsiz!\n\nTilni tanlang:",
-            "ask_name":    "📝 To'liq ismingizni kiriting:\n_Misol: Alisher Nazarov_",
-            "ask_age":     "🎂 Yoshingizni kiriting:\n_Misol: 35_",
-            "ask_phone":   "📱 Telefon raqamingizni yuboring:",
-            "registered":  "✅ Ro'yxatdan o'tdingiz!\n\nEndi MRT / MSKT / Rentgen rasmi yoki PDF hujjatini yuboring 📸",
-            "not_sub":     f"⚠️ Botdan foydalanish uchun kanalga obuna bo'ling:\n\n👉 {SUBSCRIBE_CH}\n\nObuna bo'lgach /start bosing.",
-            "send_file":   "📸 MRT, MSKT, Rentgen rasmi yoki PDF/DOC hujjat yuboring",
-            "in_queue":    "⏳ Navbatga qo'shildi!\n🔢 Navbatingiz: #{pos}\n\nBirozdan keyin natija yuboriladi ⏱",
-            "processing":  "🔬 Tahlil qilinmoqda...",
-            "error":       "❌ Xatolik yuz berdi. Qayta urinib ko'ring.",
-            "sub_btn":     "📢 Kanalga obuna bo'lish",
-            "check_btn":   "✅ Obunani tekshirish",
-            "phone_btn":   "📱 Raqamni ulashish",
-            "name_err":    "⚠️ Ism va Familiyangizni kiriting\n_Misol: Alisher Nazarov_",
-            "age_err":     "⚠️ Faqat raqam kiriting\n_Misol: 35_",
-            "start_first": "⚠️ Avval /start bosib ro'yxatdan o'ting",
-            "no_text_doc": "⚠️ Bu hujjatda o'qiladigan matn topilmadi.",
+            # Boshlang'ich
+            "choose_lang":   "🌐 Tilni tanlang:",
+            "ask_name":      "👤 Ism va familiyangizni kiriting:\n_Misol: Alisher Nazarov_",
+            "ask_age":       "🎂 Yoshingizni kiriting:\n_Misol: 35_",
+            "registered":    "✅ Ro'yxatdan muvaffaqiyatli o'tdingiz!\n\n📱 Asosiy menyu ochildi 👇",
+            "not_sub":       f"⚠️ Botdan foydalanish uchun avval kanalga obuna bo'ling:\n\n👉 {SUBSCRIBE_CH}\n\nObuna bo'lgach /start bosing.",
+            # Menyu
+            "main_menu":     "🏠 *Asosiy menyu*\n\n👤 *{name}*\n🎂 Yosh: {age}\n\n💎 Status: {status}\n📊 Bugungi tahlillar: {today}/{limit}",
+            "menu_analyze":  "🔬 Tahlil qilish",
+            "menu_premium":  "💎 Premium",
+            "menu_history":  "📋 Tarix",
+            "menu_profile":  "👤 Profilim",
+            "menu_contact":  "📞 Aloqa",
+            # Tahlil
+            "send_file":     "📸 *Tahlil uchun fayl yuboring:*\n\n• MRT, MSKT, Rentgen rasmi\n• PDF yoki Word hujjat\n\n📌 Aniq va sifatli rasm yuborish tavsiya etiladi.",
+            "in_queue":      "⏳ *Navbatga qo'shildi!*\n🔢 Navbatingiz: *#{pos}*\n\nBirozdan keyin natija yuboriladi ⏱",
+            "processing":    "🔬 *Tahlil qilinmoqda...*\n\nIltimos kuting, bu bir necha soniya oladi.",
+            "error":         "❌ Xatolik yuz berdi. Qayta urinib ko'ring.",
+            "no_text_doc":   "⚠️ Bu hujjatda o'qiladigan matn topilmadi.",
+            # Limit
+            "limit_reached": f"⛔ *Kunlik bepul limit tugadi!*\n\n📊 Bugun {FREE_DAILY_LIMIT} ta bepul tahlil ishlatdingiz.\n\n💎 *Premium* xarid qilib cheksiz foydalaning!\n\n🔄 Ertaga {FREE_DAILY_LIMIT} ta bepul tahlil qayta beriladi.",
+            "free_left":     "📊 Bugungi bepul tahlil: *{left}/{limit}* ta qoldi",
+            # Premium
+            "premium_info":  (
+                "💎 *Radiology AI Premium*\n\n"
+                "✅ *Bepul:*\n"
+                f"• Kuniga {FREE_DAILY_LIMIT} ta tahlil\n"
+                "• Asosiy tahlil\n\n"
+                "👑 *Premium afzalliklari:*\n"
+                "• ♾️ Cheksiz tahlil\n"
+                "• 🔬 Chuqurroq AI tahlil\n"
+                "• ⚡ Navbatsiz (tezkor)\n"
+                "• 📋 Tahlil tarixi (20 ta)\n"
+                "• 💬 Shifokor maslahat\n\n"
+                "💰 *Narxlar:*\n"
+                f"• 1 oy — {PREMIUM_1M:,} so'm\n"
+                f"• 3 oy — {PREMIUM_3M:,} so'm\n"
+                f"• 1 yil — {PREMIUM_12M:,} so'm\n\n"
+                "👇 Muddatni tanlang:"
+            ),
+            "pay_choose":    "💳 To'lov usulini tanlang:",
+            "pay_payme":     "💳 Payme",
+            "pay_click":     "💳 Click",
+            "pay_card":      "💳 Karta raqami",
+            "pay_manual":    (
+                "💳 *Qo'lda to'lov*\n\n"
+                "Quyidagi karta raqamiga o'tkazing:\n\n"
+                "🏦 *{amount:,} so'm*\n"
+                "💳 `9860190110089898`\n"
+                "👤 Egasi: Laziz Nabiyev\n\n"
+                "✅ To'lovdan so'ng chekni @Technologeee ga yuboring.\n"
+                "Premium 1 soat ichida yoqiladi."
+            ),
+            "premium_active": "💎 *Premium faol!*\n\nMuddati: *{until}* gacha\n\nBarcha imkoniyatlar ochiq ✅",
+            "premium_none":   "❌ Sizda hozircha premium yo'q.",
+            # Profil
+            "profile":       (
+                "👤 *Profilim*\n\n"
+                "📛 Ism: *{name}*\n"
+                "🎂 Yosh: *{age}*\n"
+                "📱 Tel: `{phone}`\n"
+                "🔹 Username: {username}\n"
+                "🆔 ID: `{uid}`\n"
+                "📅 Ro'yxat: {reg_date}\n\n"
+                "📊 Jami tahlillar: *{total}*\n"
+                "💎 Premium: {prem_status}"
+            ),
+            # Tarix
+            "history_empty": "📋 Tahlil tarixi bo'sh.\n\nRasm yuboring — natija saqlanadi.",
+            "history_title": "📋 *So'nggi tahlillar:*\n\n",
+            "history_item":  "🔬 *{num}.* {date} — {type}\n",
+            # Aloqa
+            "contact_info":  (
+                "📞 *Aloqa*\n\n"
+                "❓ Savol yoki muammo bo'lsa:\n\n"
+                "👨‍💻 Admin: @RadiologyAIAdmin\n"
+                "📢 Kanal: {ch}\n"
+                "📧 Email: info@radiologyai.uz\n\n"
+                "⏰ Ish vaqti: 09:00 — 22:00"
+            ),
+            # Umumiy
+            "sub_btn":       "📢 Kanalga obuna bo'lish",
+            "check_btn":     "✅ Obunani tekshirish",
+            "back_btn":      "🔙 Orqaga",
+            "name_err":      "⚠️ Ism va familiya kiriting\n_Misol: Alisher Nazarov_",
+            "age_err":       "⚠️ Faqat raqam kiriting (1-120)\n_Misol: 35_",
+            "start_first":   "⚠️ Avval /start bosib ro'yxatdan o'ting",
         },
         "ru": {
-            "welcome":     "👋 Добро пожаловать в *Radiology AI*!\n\nВыберите язык:",
-            "ask_name":    "📝 Введите полное имя:\n_Пример: Алишер Назаров_",
-            "ask_age":     "🎂 Введите ваш возраст:\n_Пример: 35_",
-            "ask_phone":   "📱 Поделитесь номером телефона:",
-            "registered":  "✅ Вы зарегистрированы!\n\nОтправьте снимок МРТ / КТ / Рентген или PDF документ 📸",
-            "not_sub":     f"⚠️ Подпишитесь на канал:\n\n👉 {SUBSCRIBE_CH}\n\nПосле подписки нажмите /start.",
-            "send_file":   "📸 Отправьте снимок МРТ, КТ, Рентген или PDF/DOC документ",
-            "in_queue":    "⏳ Добавлено в очередь!\n🔢 Ваш номер: #{pos}\n\nРезультат придёт скоро ⏱",
-            "processing":  "🔬 Анализируется...",
-            "error":       "❌ Произошла ошибка. Попробуйте снова.",
-            "sub_btn":     "📢 Подписаться на канал",
-            "check_btn":   "✅ Проверить подписку",
-            "phone_btn":   "📱 Поделиться номером",
-            "name_err":    "⚠️ Введите Имя и Фамилию\n_Пример: Алишер Назаров_",
-            "age_err":     "⚠️ Введите только число\n_Пример: 35_",
-            "start_first": "⚠️ Сначала нажмите /start для регистрации",
-            "no_text_doc": "⚠️ В документе не найден читаемый текст.",
+            "choose_lang":   "🌐 Выберите язык:",
+            "ask_name":      "👤 Введите имя и фамилию:\n_Пример: Алишер Назаров_",
+            "ask_age":       "🎂 Введите ваш возраст:\n_Пример: 35_",
+            "registered":    "✅ Регистрация прошла успешно!\n\n📱 Главное меню открыто 👇",
+            "not_sub":       f"⚠️ Подпишитесь на канал:\n\n👉 {SUBSCRIBE_CH}\n\nПосле подписки нажмите /start.",
+            "main_menu":     "🏠 *Главное меню*\n\n👤 *{name}*\n🎂 Возраст: {age}\n\n💎 Статус: {status}\n📊 Анализов сегодня: {today}/{limit}",
+            "menu_analyze":  "🔬 Анализ",
+            "menu_premium":  "💎 Премиум",
+            "menu_history":  "📋 История",
+            "menu_profile":  "👤 Мой профиль",
+            "menu_contact":  "📞 Контакт",
+            "send_file":     "📸 *Отправьте файл для анализа:*\n\n• Снимок МРТ, КТ, Рентген\n• PDF или Word документ\n\n📌 Рекомендуется отправлять чёткие снимки.",
+            "in_queue":      "⏳ *Добавлено в очередь!*\n🔢 Ваш номер: *#{pos}*\n\nРезультат придёт скоро ⏱",
+            "processing":    "🔬 *Анализируется...*\n\nПожалуйста, подождите.",
+            "error":         "❌ Произошла ошибка. Попробуйте снова.",
+            "no_text_doc":   "⚠️ В документе не найден читаемый текст.",
+            "limit_reached": f"⛔ *Дневной лимит исчерпан!*\n\n📊 Вы использовали {FREE_DAILY_LIMIT} бесплатных анализа.\n\n💎 Купите *Premium* для безлимитного использования!\n\n🔄 Завтра снова {FREE_DAILY_LIMIT} бесплатных.",
+            "free_left":     "📊 Осталось бесплатных: *{left}/{limit}*",
+            "premium_info":  (
+                "💎 *Radiology AI Premium*\n\n"
+                "✅ *Бесплатно:*\n"
+                f"• {FREE_DAILY_LIMIT} анализа в день\n"
+                "• Базовый анализ\n\n"
+                "👑 *Преимущества Premium:*\n"
+                "• ♾️ Безлимитные анализы\n"
+                "• 🔬 Глубокий AI-анализ\n"
+                "• ⚡ Без очереди\n"
+                "• 📋 История (20 анализов)\n"
+                "• 💬 Консультация врача\n\n"
+                "💰 *Цены:*\n"
+                f"• 1 месяц — {PREMIUM_1M:,} сум\n"
+                f"• 3 месяца — {PREMIUM_3M:,} сум\n"
+                f"• 1 год — {PREMIUM_12M:,} сум\n\n"
+                "👇 Выберите срок:"
+            ),
+            "pay_choose":    "💳 Выберите способ оплаты:",
+            "pay_payme":     "💳 Payme",
+            "pay_click":     "💳 Click",
+            "pay_card":      "💳 Номер карты",
+            "pay_manual":    (
+                "💳 *Оплата вручную*\n\n"
+                "Переведите на карту:\n\n"
+                "🏦 *{amount:,} сум*\n"
+                "💳 `8600 1234 5678 9012`\n"
+                "👤 Получатель: Radiology AI\n\n"
+                "✅ После оплаты отправьте чек @RadiologyAIAdmin.\n"
+                "Premium активируется в течение 1 часа."
+            ),
+            "premium_active": "💎 *Premium активен!*\n\nДействует до: *{until}*\n\nВсе возможности открыты ✅",
+            "premium_none":   "❌ У вас нет активного Premium.",
+            "profile":       (
+                "👤 *Мой профиль*\n\n"
+                "📛 Имя: *{name}*\n"
+                "🎂 Возраст: *{age}*\n"
+                "📱 Тел: `{phone}`\n"
+                "🔹 Username: {username}\n"
+                "🆔 ID: `{uid}`\n"
+                "📅 Регистрация: {reg_date}\n\n"
+                "📊 Всего анализов: *{total}*\n"
+                "💎 Premium: {prem_status}"
+            ),
+            "history_empty": "📋 История пуста.\n\nОтправьте снимок — результат сохранится.",
+            "history_title": "📋 *Последние анализы:*\n\n",
+            "history_item":  "🔬 *{num}.* {date} — {type}\n",
+            "contact_info":  (
+                "📞 *Контакт*\n\n"
+                "❓ Вопросы и проблемы:\n\n"
+                "👨‍💻 Админ: @RadiologyAIAdmin\n"
+                "📢 Канал: {ch}\n"
+                "📧 Email: info@radiologyai.uz\n\n"
+                "⏰ Рабочее время: 09:00 — 22:00"
+            ),
+            "sub_btn":       "📢 Подписаться",
+            "check_btn":     "✅ Проверить подписку",
+            "back_btn":      "🔙 Назад",
+            "name_err":      "⚠️ Введите Имя и Фамилию\n_Пример: Алишер Назаров_",
+            "age_err":       "⚠️ Введите число (1-120)\n_Пример: 35_",
+            "start_first":   "⚠️ Нажмите /start для регистрации",
         },
         "en": {
-            "welcome":     "👋 Welcome to *Radiology AI*!\n\nChoose language:",
-            "ask_name":    "📝 Enter your full name:\n_Example: John Smith_",
-            "ask_age":     "🎂 Enter your age:\n_Example: 35_",
-            "ask_phone":   "📱 Share your phone number:",
-            "registered":  "✅ Registration complete!\n\nSend your MRI / CT / X-Ray or PDF document 📸",
-            "not_sub":     f"⚠️ Subscribe to our channel first:\n\n👉 {SUBSCRIBE_CH}\n\nThen press /start.",
-            "send_file":   "📸 Send MRI, CT, X-Ray image or PDF/DOC document",
-            "in_queue":    "⏳ Added to queue!\n🔢 Your position: #{pos}\n\nResult coming soon ⏱",
-            "processing":  "🔬 Analyzing...",
-            "error":       "❌ An error occurred. Please try again.",
-            "sub_btn":     "📢 Subscribe to channel",
-            "check_btn":   "✅ Check subscription",
-            "phone_btn":   "📱 Share phone number",
-            "name_err":    "⚠️ Enter First and Last name\n_Example: John Smith_",
-            "age_err":     "⚠️ Enter numbers only\n_Example: 35_",
-            "start_first": "⚠️ Please press /start to register first",
-            "no_text_doc": "⚠️ No readable text found in this document.",
+            "choose_lang":   "🌐 Choose language:",
+            "ask_name":      "👤 Enter your full name:\n_Example: John Smith_",
+            "ask_age":       "🎂 Enter your age:\n_Example: 35_",
+            "registered":    "✅ Registration successful!\n\n📱 Main menu opened 👇",
+            "not_sub":       f"⚠️ Subscribe to our channel first:\n\n👉 {SUBSCRIBE_CH}\n\nThen press /start.",
+            "main_menu":     "🏠 *Main Menu*\n\n👤 *{name}*\n🎂 Age: {age}\n\n💎 Status: {status}\n📊 Today's analyses: {today}/{limit}",
+            "menu_analyze":  "🔬 Analyze",
+            "menu_premium":  "💎 Premium",
+            "menu_history":  "📋 History",
+            "menu_profile":  "👤 My Profile",
+            "menu_contact":  "📞 Contact",
+            "send_file":     "📸 *Send file for analysis:*\n\n• MRI, CT, X-Ray image\n• PDF or Word document\n\n📌 Clear, high-quality images recommended.",
+            "in_queue":      "⏳ *Added to queue!*\n🔢 Your position: *#{pos}*\n\nResult coming soon ⏱",
+            "processing":    "🔬 *Analyzing...*\n\nPlease wait a moment.",
+            "error":         "❌ An error occurred. Please try again.",
+            "no_text_doc":   "⚠️ No readable text found in this document.",
+            "limit_reached": f"⛔ *Daily free limit reached!*\n\n📊 You've used {FREE_DAILY_LIMIT} free analyses today.\n\n💎 Get *Premium* for unlimited access!\n\n🔄 {FREE_DAILY_LIMIT} free analyses reset tomorrow.",
+            "free_left":     "📊 Free analyses left: *{left}/{limit}*",
+            "premium_info":  (
+                "💎 *Radiology AI Premium*\n\n"
+                "✅ *Free:*\n"
+                f"• {FREE_DAILY_LIMIT} analyses/day\n"
+                "• Basic analysis\n\n"
+                "👑 *Premium benefits:*\n"
+                "• ♾️ Unlimited analyses\n"
+                "• 🔬 Deep AI analysis\n"
+                "• ⚡ Priority queue\n"
+                "• 📋 History (20 records)\n"
+                "• 💬 Doctor consultation\n\n"
+                "💰 *Pricing:*\n"
+                f"• 1 month — {PREMIUM_1M:,} UZS\n"
+                f"• 3 months — {PREMIUM_3M:,} UZS\n"
+                f"• 1 year — {PREMIUM_12M:,} UZS\n\n"
+                "👇 Choose duration:"
+            ),
+            "pay_choose":    "💳 Choose payment method:",
+            "pay_payme":     "💳 Payme",
+            "pay_click":     "💳 Click",
+            "pay_card":      "💳 Card number",
+            "pay_manual":    (
+                "💳 *Manual payment*\n\n"
+                "Transfer to this card:\n\n"
+                "🏦 *{amount:,} UZS*\n"
+                "💳 `8600 1234 5678 9012`\n"
+                "👤 Recipient: Radiology AI\n\n"
+                "✅ Send receipt to @RadiologyAIAdmin after payment.\n"
+                "Premium activated within 1 hour."
+            ),
+            "premium_active": "💎 *Premium active!*\n\nValid until: *{until}*\n\nAll features unlocked ✅",
+            "premium_none":   "❌ You don't have an active Premium.",
+            "profile":       (
+                "👤 *My Profile*\n\n"
+                "📛 Name: *{name}*\n"
+                "🎂 Age: *{age}*\n"
+                "📱 Phone: `{phone}`\n"
+                "🔹 Username: {username}\n"
+                "🆔 ID: `{uid}`\n"
+                "📅 Registered: {reg_date}\n\n"
+                "📊 Total analyses: *{total}*\n"
+                "💎 Premium: {prem_status}"
+            ),
+            "history_empty": "📋 History is empty.\n\nSend an image — results will be saved.",
+            "history_title": "📋 *Recent analyses:*\n\n",
+            "history_item":  "🔬 *{num}.* {date} — {type}\n",
+            "contact_info":  (
+                "📞 *Contact*\n\n"
+                "❓ Questions or issues:\n\n"
+                "👨‍💻 Admin: @RadiologyAIAdmin\n"
+                "📢 Channel: {ch}\n"
+                "📧 Email: info@radiologyai.uz\n\n"
+                "⏰ Working hours: 09:00 — 22:00"
+            ),
+            "sub_btn":       "📢 Subscribe",
+            "check_btn":     "✅ Check subscription",
+            "back_btn":      "🔙 Back",
+            "name_err":      "⚠️ Enter First and Last name\n_Example: John Smith_",
+            "age_err":       "⚠️ Enter a number (1-120)\n_Example: 35_",
+            "start_first":   "⚠️ Press /start to register first",
         },
     }
-    return texts.get(lang, texts["uz"]).get(key, "")
+    val = texts.get(lang, texts["uz"]).get(key, "")
+    if kw:
+        try:
+            val = val.format(**kw)
+        except:
+            pass
+    return val
 
-# ─── GEMINI: RASM TAHLIL ──────────────────────────────────────────────────────
-async def analyze_image_gemini(image_bytes: bytes, lang: str, age: str = "") -> str:
+# ─── MAIN MENU KEYBOARD ───────────────────────────────────────────────────────
+def main_menu_kb(lang):
+    return ReplyKeyboardMarkup([
+        [t(lang,"menu_analyze"), t(lang,"menu_premium")],
+        [t(lang,"menu_history"), t(lang,"menu_profile")],
+        [t(lang,"menu_contact")]
+    ], resize_keyboard=True)
+
+async def send_main_menu(bot_or_msg, user_id, lang, user_data, send_fn):
+    is_prem = db.is_premium(user_id)
+    today = db.get_today_count(user_id)
+    status = "💎 Premium" if is_prem else "🆓 Bepul" if lang == "uz" else ("🆓 Бесплатно" if lang == "ru" else "🆓 Free")
+    text = t(lang, "main_menu",
+             name=user_data.get("full_name","—"),
+             age=user_data.get("age","—"),
+             status=status,
+             today=today,
+             limit=FREE_DAILY_LIMIT)
+    await send_fn(text, reply_markup=main_menu_kb(lang), parse_mode="Markdown")
+
+# ─── GEMINI: RASM ─────────────────────────────────────────────────────────────
+async def analyze_image_gemini(image_bytes, lang, age="", is_premium=False):
+    depth = "CHUQUR va BATAFSIL" if is_premium else "asosiy"
     age_note = f" Bemor yoshi: {age}." if age and age != "—" else ""
 
     prompts = {
-        "uz": f"""Siz mutaxassis radiolog shifokor sifatida quyidagi tibbiy tasvirni tahlil qiling.{age_note}
-Javobingiz FAQAT quyidagi formatda bo'lsin:
+        "uz": f"""Siz 20 yillik tajribaga ega bo'lgan mutaxassis radiolog shifokor sifatida quyidagi tibbiy tasvirni {depth} tahlil qiling.{age_note}
 
-🖼 *Rasm turi:*
-[MRT / MSKT / Rentgen; qaysi a'zo]
+Javobingizni FAQAT quyidagi aniq formatda yozing — boshqa hech narsa qo'shmang:
 
-🔬 *Ko'rinayotgan tuzilmalar:*
-[Anatomik tuzilmalar, to'qimalar]
+🖼 *Tasvir turi:*
+[MRT / MSKT / Rentgen / Ultratovush yoki boshqa; qaysi organ/a'zo/hudud aniq ko'rsating]
 
-📋 *Topilmalar:*
-[Normal va patologik o'zgarishlar]
+🔬 *Ko'rinayotgan anatomik tuzilmalar:*
+[Suyaklar, bo'g'imlar, to'qimalar, organlar, tomirlar — ko'rinayotganlarni sanab chiqing]
 
-⚠️ *Diqqat:*
-[Shubhali o'zgarishlar yoki "Belirgin patologiya aniqlanmadi"]
+📋 *Topilmalar va tavsif:*
+[O'lchamlar, zichlik, chegaralar, simmetriya, normal va g'ayritabiiy o'zgarishlar — har birini alohida qatorga yozing]
 
-💊 *Tavsiya:*
-[Qaysi mutaxassisga murojaat; qo'shimcha tekshiruvlar]
+⚠️ *Patologik o'zgarishlar:*
+[Aniqlangan kasallik belgilari, shish, yallig'lanish, suyak o'zgarishlari, siqilish, siljish — yoki "Belirgin patologiya aniqlanmadi"]
 
-⚕️ _Bu AI tahlili, rasmiy tashxis emas. Aniq tashxis uchun shifokorga murojaat qiling._""",
+🩺 *Taxminiy tashxis:*
+[Eng ehtimoliy holat yoki holatlar ro'yxati — ehtimollik foizi bilan]
 
-        "ru": f"""Вы — опытный врач-радиолог. Проанализируйте медицинский снимок.{age_note}
+💊 *Tavsiyalar:*
+[Qaysi mutaxassisga murojaat qilish; qo'shimcha tekshiruvlar (qon tahlili, boshqa rasm turi); darhol choralar zarurmi]
+
+⚕️ _Muhim eslatma: Bu sun'iy intellekt tomonidan avtomatik tahlil hisoblanadi va rasmiy tibbiy tashxis o'rnini bosa olmaydi. Aniq tashxis va davolash uchun albatta mutaxassis shifokorga murojaat qiling._""",
+
+        "ru": f"""Вы — опытный врач-радиолог с 20-летним стажем. Проведите {depth} анализ медицинского снимка.{age_note}
+
 Ответ ТОЛЬКО в этом формате:
 
 🖼 *Тип снимка:*
-[МРТ / КТ / Рентген; какой орган]
+[МРТ / КТ / Рентген / УЗИ; укажите орган/область]
 
-🔬 *Видимые структуры:*
-[Анатомические структуры, ткани]
+🔬 *Видимые анатомические структуры:*
+[Кости, суставы, ткани, органы, сосуды]
 
 📋 *Находки:*
-[Нормальные и патологические изменения]
+[Размеры, плотность, контуры, симметрия, изменения]
 
-⚠️ *Внимание:*
-[Подозрительные изменения или "Значимой патологии не выявлено"]
+⚠️ *Патологические изменения:*
+[Признаки патологии или "Значимой патологии не выявлено"]
+
+🩺 *Предварительный диагноз:*
+[Наиболее вероятные состояния с вероятностью]
 
 💊 *Рекомендации:*
-[К какому специалисту; дополнительные исследования]
+[К какому специалисту; дополнительные исследования; срочность]
 
-⚕️ _Это AI-анализ, не официальный диагноз. Обратитесь к врачу._""",
+⚕️ _Важно: Это автоматический AI-анализ, не заменяет официальный медицинский диагноз. Обратитесь к врачу._""",
 
-        "en": f"""You are an experienced radiologist. Analyze this medical image.{age_note}
+        "en": f"""You are an expert radiologist with 20 years of experience. Perform a {depth} analysis of this medical image.{age_note}
+
 Reply ONLY in this format:
 
 🖼 *Image Type:*
-[MRI / CT / X-Ray; which organ]
+[MRI / CT / X-Ray / Ultrasound; specify organ/region]
 
-🔬 *Visible Structures:*
-[Anatomical structures, tissues]
+🔬 *Visible Anatomical Structures:*
+[Bones, joints, tissues, organs, vessels]
 
 📋 *Findings:*
-[Normal and abnormal changes]
+[Size, density, margins, symmetry, changes]
 
-⚠️ *Concern:*
-[Suspicious changes or "No significant pathology detected"]
+⚠️ *Pathological Changes:*
+[Signs of pathology or "No significant pathology detected"]
 
-💊 *Recommendation:*
-[Which specialist; additional studies]
+🩺 *Preliminary Diagnosis:*
+[Most likely conditions with probability]
 
-⚕️ _This is AI analysis, not an official diagnosis. Consult a physician._""",
+💊 *Recommendations:*
+[Which specialist; additional studies; urgency]
+
+⚕️ _Note: This is an automated AI analysis and does not replace official medical diagnosis. Consult a physician._""",
     }
 
     prompt = prompts.get(lang, prompts["uz"])
     img_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
 
     payload = {
         "contents": [{"parts": [
             {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
             {"text": prompt}
         ]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200}
+        "generationConfig": {"temperature": 0.15, "maxOutputTokens": 1800 if is_premium else 1200}
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -181,86 +423,101 @@ Reply ONLY in this format:
         try:
             return r.json()["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
-            logger.error(f"Gemini image parse error: {e}")
+            logger.error(f"Gemini image parse: {e}")
             return None
-    logger.error(f"Gemini image error: {r.status_code} {r.text[:300]}")
+    logger.error(f"Gemini image API: {r.status_code} {r.text[:300]}")
     return None
 
-# ─── GEMINI: MATN (PDF/DOC) TAHLIL ───────────────────────────────────────────
-async def analyze_text_gemini(doc_text: str, lang: str, age: str = "") -> str:
+# ─── GEMINI: MATN (PDF/DOCX) ──────────────────────────────────────────────────
+async def analyze_text_gemini(doc_text, lang, age="", is_premium=False):
+    depth = "CHUQUR va BATAFSIL" if is_premium else "asosiy"
     age_note = f" Bemor yoshi: {age}." if age and age != "—" else ""
 
     prompts = {
-        "uz": f"""Siz mutaxassis radiolog yoki tibbiyot eksperti sifatida quyidagi tibbiy hujjatni tahlil qiling.{age_note}
+        "uz": f"""Siz mutaxassis tibbiyot eksperi sifatida quyidagi tibbiy hujjatni {depth} tahlil qiling.{age_note}
+
 Hujjat matni:
 ---
-{doc_text[:4000]}
+{doc_text[:5000]}
 ---
-Javobingiz FAQAT quyidagi formatda bo'lsin:
+
+Javobingizni FAQAT quyidagi formatda yozing:
 
 📄 *Hujjat turi:*
-[MRT / MSKT / Rentgen xulosa yoki boshqa tibbiy hujjat]
+[MRT/MSKT/Rentgen xulosa, tahlil natijasi yoki boshqa tibbiy hujjat]
 
-📋 *Asosiy topilmalar:*
-[Hujjatdagi muhim ma'lumotlar]
+📋 *Asosiy ma'lumotlar:*
+[Hujjatdagi barcha muhim ko'rsatkichlar, o'lchamlar, qiymatlar]
 
-⚠️ *Diqqat:*
-[Patologik o'zgarishlar yoki "Belirgin patologiya aniqlanmadi"]
+⚠️ *Patologik topilmalar:*
+[Normadan chiqish, kasallik belgilari — yoki "Belirgin patologiya aniqlanmadi"]
 
-💊 *Tavsiya:*
-[Qaysi mutaxassisga murojaat; keyingi qadamlar]
+🩺 *Taxminiy tashxis:*
+[Hujjat asosida eng ehtimoliy holat]
 
-⚕️ _Bu AI tahlili, rasmiy tashxis emas. Aniq tashxis uchun shifokorga murojaat qiling._""",
+💊 *Tavsiyalar:*
+[Qaysi mutaxassisga murojaat; keyingi tekshiruvlar; darhol choralar]
 
-        "ru": f"""Вы — медицинский эксперт. Проанализируйте следующий медицинский документ.{age_note}
-Текст документа:
+⚕️ _Bu AI tahlili bo'lib, rasmiy tibbiy tashxis emas. Shifokorga murojaat qiling._""",
+
+        "ru": f"""Вы — медицинский эксперт. Проведите {depth} анализ документа.{age_note}
+
+Текст:
 ---
-{doc_text[:4000]}
+{doc_text[:5000]}
 ---
-Ответ ТОЛЬКО в этом формате:
+
+Ответ ТОЛЬКО в формате:
 
 📄 *Тип документа:*
-[МРТ / КТ / Рентген заключение или другой документ]
+[МРТ/КТ/Рентген заключение, анализы или другой документ]
 
-📋 *Основные находки:*
-[Важные данные из документа]
+📋 *Ключевые данные:*
+[Все важные показатели, размеры, значения]
 
-⚠️ *Внимание:*
-[Патологические изменения или "Значимой патологии не выявлено"]
+⚠️ *Патологические находки:*
+[Отклонения от нормы или "Значимой патологии не выявлено"]
+
+🩺 *Предварительный диагноз:*
+[Наиболее вероятное состояние]
 
 💊 *Рекомендации:*
-[К какому специалисту; следующие шаги]
+[К кому обратиться; дальнейшие исследования; срочность]
 
-⚕️ _Это AI-анализ, не официальный диагноз. Обратитесь к врачу._""",
+⚕️ _AI-анализ, не заменяет диагноз врача._""",
 
-        "en": f"""You are a medical expert. Analyze the following medical document.{age_note}
-Document text:
+        "en": f"""You are a medical expert. Perform a {depth} analysis of this document.{age_note}
+
+Document:
 ---
-{doc_text[:4000]}
+{doc_text[:5000]}
 ---
+
 Reply ONLY in this format:
 
 📄 *Document Type:*
-[MRI / CT / X-Ray report or other document]
+[MRI/CT/X-Ray report, lab results or other]
 
-📋 *Key Findings:*
-[Important information from the document]
+📋 *Key Data:*
+[All important values, measurements, findings]
 
-⚠️ *Concern:*
-[Pathological changes or "No significant pathology detected"]
+⚠️ *Pathological Findings:*
+[Deviations from norm or "No significant pathology detected"]
 
-💊 *Recommendation:*
-[Which specialist; next steps]
+🩺 *Preliminary Diagnosis:*
+[Most likely condition]
 
-⚕️ _This is AI analysis, not an official diagnosis. Consult a physician._""",
+💊 *Recommendations:*
+[Which specialist; further tests; urgency]
+
+⚕️ _AI analysis, does not replace physician diagnosis._""",
     }
 
     prompt = prompts.get(lang, prompts["uz"])
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1200}
+        "generationConfig": {"temperature": 0.15, "maxOutputTokens": 1800 if is_premium else 1200}
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -270,40 +527,51 @@ Reply ONLY in this format:
         try:
             return r.json()["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
-            logger.error(f"Gemini text parse error: {e}")
+            logger.error(f"Gemini text parse: {e}")
             return None
-    logger.error(f"Gemini text error: {r.status_code} {r.text[:300]}")
+    logger.error(f"Gemini text API: {r.status_code} {r.text[:300]}")
     return None
 
-# ─── PDF MATN AJRATISH ────────────────────────────────────────────────────────
-def extract_pdf_text(file_bytes: bytes) -> str:
-    """PDF dan matn ajratish (pypdf)"""
+# ─── PDF / DOCX MATN ──────────────────────────────────────────────────────────
+def extract_pdf_text(file_bytes):
     try:
         import io
         from pypdf import PdfReader
         reader = PdfReader(io.BytesIO(file_bytes))
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() or ""
-        return text.strip()
+        return "".join(p.extract_text() or "" for p in reader.pages).strip()
     except Exception as e:
-        logger.error(f"PDF extract error: {e}")
+        logger.error(f"PDF: {e}")
         return ""
 
-def extract_docx_text(file_bytes: bytes) -> str:
-    """DOCX dan matn ajratish (python-docx)"""
+def extract_docx_text(file_bytes):
     try:
         import io
         from docx import Document
         doc = Document(io.BytesIO(file_bytes))
         return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
     except Exception as e:
-        logger.error(f"DOCX extract error: {e}")
+        logger.error(f"DOCX: {e}")
         return ""
+
+# ─── TO'LOV LINKLARI ──────────────────────────────────────────────────────────
+def payme_link(amount, order_id):
+    if not PAYME_MERCHANT:
+        return None
+    import base64 as b64
+    params = f"m={PAYME_MERCHANT};ac.order_id={order_id};a={amount * 100}"
+    encoded = b64.b64encode(params.encode()).decode()
+    return f"https://checkout.paycom.uz/{encoded}"
+
+def click_link(amount, order_id):
+    if not CLICK_MERCHANT or not CLICK_SERVICE:
+        return None
+    return (f"https://my.click.uz/services/pay?service_id={CLICK_SERVICE}"
+            f"&merchant_id={CLICK_MERCHANT}&amount={amount}&transaction_param={order_id}")
 
 # ─── HANDLERS ─────────────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+    user = update.message.from_user
+    user_id = user.id
 
     if not await check_subscription(context.bot, user_id):
         lang = db.get_user_lang(user_id) or "uz"
@@ -316,16 +584,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_data = db.get_user(user_id)
     if user_data and user_data.get("registered"):
-        await update.message.reply_text(t(user_data.get("lang","uz"),"send_file"), parse_mode="Markdown")
+        lang = user_data.get("lang","uz")
+        await send_main_menu(None, user_id, lang, user_data,
+            lambda *a, **kw: update.message.reply_text(*a, **kw))
         return
 
-    # Ro'yxatdan o'tish boshlash - DB ga step saqlash
-    db.set_reg_step(user_id, "lang")
+    db.set_reg_data(user_id, {"step": "lang"})
     kb = [["🇺🇿 O'zbek", "🇷🇺 Русский", "🇬🇧 English"]]
     await update.message.reply_text(
-        "👋 *Radiology AI*\n\nTilni tanlang / Выберите язык / Choose language:",
-        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=True),
-        parse_mode="Markdown"
+        "🌐 Tilni tanlang / Выберите язык / Choose language:",
+        reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=True)
     )
 
 async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -336,58 +604,179 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if await check_subscription(context.bot, user_id):
         user_data = db.get_user(user_id)
         if user_data and user_data.get("registered"):
-            await query.message.reply_text(t(user_data.get("lang","uz"),"send_file"))
+            lang = user_data.get("lang","uz")
+            await send_main_menu(None, user_id, lang, user_data,
+                lambda *a, **kw: query.message.reply_text(*a, **kw))
         else:
-            db.set_reg_step(user_id, "lang")
+            db.set_reg_data(user_id, {"step": "lang"})
             kb = [["🇺🇿 O'zbek", "🇷🇺 Русский", "🇬🇧 English"]]
             await query.message.reply_text("✅ Tasdiqlandi! Tilni tanlang:",
                 reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=True))
     else:
         await query.answer("❌ Hali obuna bo'lmadingiz!", show_alert=True)
 
+# ─── TO'LOV CALLBACK ──────────────────────────────────────────────────────────
+async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    data = query.data
+    lang = (db.get_user(user_id) or {}).get("lang","uz")
+
+    # prem:1m / prem:3m / prem:12m
+    if data.startswith("prem:"):
+        period = data.split(":")[1]
+        amounts = {"1m": PREMIUM_1M, "3m": PREMIUM_3M, "12m": PREMIUM_12M}
+        amount = amounts.get(period, PREMIUM_1M)
+        order_id = f"{user_id}_{period}_{int(datetime.utcnow().timestamp())}"
+
+        buttons = []
+        pl = payme_link(amount, order_id)
+        cl = click_link(amount, order_id)
+        if pl:
+            buttons.append([InlineKeyboardButton("💳 Payme", url=pl)])
+        if cl:
+            buttons.append([InlineKeyboardButton("💳 Click", url=cl)])
+        buttons.append([InlineKeyboardButton("🏦 " + t(lang,"pay_card"), callback_data=f"manual:{period}")])
+        buttons.append([InlineKeyboardButton(t(lang,"back_btn"), callback_data="show_premium")])
+
+        await query.message.edit_text(
+            t(lang,"pay_choose"),
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+
+    elif data.startswith("manual:"):
+        period = data.split(":")[1]
+        amounts = {"1m": PREMIUM_1M, "3m": PREMIUM_3M, "12m": PREMIUM_12M}
+        amount = amounts.get(period, PREMIUM_1M)
+        await query.message.edit_text(
+            t(lang,"pay_manual", amount=amount),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(lang,"back_btn"), callback_data="show_premium")
+            ]])
+        )
+
+    elif data == "show_premium":
+        amounts = {"1m": PREMIUM_1M, "3m": PREMIUM_3M, "12m": PREMIUM_12M}
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 1 oy — 29,900 so'm" if lang=="uz" else ("📅 1 мес — 29 900 сум" if lang=="ru" else "📅 1 month — 29,900 UZS"), callback_data="prem:1m")],
+            [InlineKeyboardButton("📅 3 oy — 79,900 so'm" if lang=="uz" else ("📅 3 мес — 79 900 сум" if lang=="ru" else "📅 3 months — 79,900 UZS"), callback_data="prem:3m")],
+            [InlineKeyboardButton("📅 1 yil — 249,900 so'm" if lang=="uz" else ("📅 1 год — 249 900 сум" if lang=="ru" else "📅 1 year — 249,900 UZS"), callback_data="prem:12m")],
+        ])
+        await query.message.edit_text(t(lang,"premium_info"), parse_mode="Markdown", reply_markup=kb)
+
+# ─── TEXT HANDLER ─────────────────────────────────────────────────────────────
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.message.from_user.id
+    user = update.message.from_user
 
-    # Ro'yxatdan o'tgan foydalanuvchi
     user_data = db.get_user(user_id)
     if user_data and user_data.get("registered"):
-        await update.message.reply_text(t(user_data.get("lang","uz"),"send_file"))
+        lang = user_data.get("lang","uz")
+        txt = text
+
+        if txt == t(lang,"menu_analyze"):
+            await update.message.reply_text(t(lang,"send_file"), parse_mode="Markdown")
+
+        elif txt == t(lang,"menu_premium"):
+            is_prem = db.is_premium(user_id)
+            if is_prem:
+                until = user_data.get("premium_until","—")
+                await update.message.reply_text(
+                    t(lang,"premium_active", until=until), parse_mode="Markdown")
+            else:
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(
+                        "📅 1 oy — 29,900 so'm" if lang=="uz" else ("📅 1 мес — 29 900 сум" if lang=="ru" else "📅 1 month — 29,900 UZS"),
+                        callback_data="prem:1m")],
+                    [InlineKeyboardButton(
+                        "📅 3 oy — 79,900 so'm" if lang=="uz" else ("📅 3 мес — 79 900 сум" if lang=="ru" else "📅 3 months — 79,900 UZS"),
+                        callback_data="prem:3m")],
+                    [InlineKeyboardButton(
+                        "📅 1 yil — 249,900 so'm" if lang=="uz" else ("📅 1 год — 249 900 сум" if lang=="ru" else "📅 1 year — 249,900 UZS"),
+                        callback_data="prem:12m")],
+                ])
+                await update.message.reply_text(
+                    t(lang,"premium_info"), parse_mode="Markdown", reply_markup=kb)
+
+        elif txt == t(lang,"menu_history"):
+            history = db.get_history(user_id)
+            if not history:
+                await update.message.reply_text(t(lang,"history_empty"))
+            else:
+                msg = t(lang,"history_title")
+                for i, h in enumerate(history[:10], 1):
+                    msg += t(lang,"history_item",
+                             num=i, date=h.get("date","—"), type=h.get("type","—"))
+                await update.message.reply_text(msg, parse_mode="Markdown")
+
+        elif txt == t(lang,"menu_profile"):
+            u = user_data
+            is_prem = db.is_premium(user_id)
+            prem_until = u.get("premium_until","")
+            prem_str = f"💎 {prem_until} gacha" if is_prem else ("❌ Yo'q" if lang=="uz" else ("❌ Нет" if lang=="ru" else "❌ None"))
+            username = f"@{u.get('username')}" if u.get("username") else "—"
+            reg_date = u.get("registered_at","—")[:10] if u.get("registered_at") else "—"
+            await update.message.reply_text(
+                t(lang,"profile",
+                  name=u.get("full_name","—"),
+                  age=u.get("age","—"),
+                  phone=u.get("phone","—"),
+                  username=username,
+                  uid=user_id,
+                  reg_date=reg_date,
+                  total=u.get("analysis_count",0),
+                  prem_status=prem_str),
+                parse_mode="Markdown"
+            )
+
+        elif txt == t(lang,"menu_contact"):
+            await update.message.reply_text(
+                t(lang,"contact_info", ch=SUBSCRIBE_CH), parse_mode="Markdown")
+
+        else:
+            await update.message.reply_text(t(lang,"send_file"), parse_mode="Markdown")
         return
 
-    # DB dan step va vaqtinchalik ma'lumotlarni olish
+    # ── RO'YXATDAN O'TISH ────────────────────────────────────────────────────
     reg = db.get_reg_data(user_id)
-    step = reg.get("step", "lang")
-    lang = reg.get("lang", "uz")
+    step = reg.get("step","lang")
+    lang = reg.get("lang","uz")
 
     # Til tanlash
-    lang_map = {"O'zbek":"uz", "Русский":"ru", "English":"en"}
+    lang_map = {"O'zbek":"uz","Русский":"ru","English":"en"}
     for key, code in lang_map.items():
         if key in text:
-            db.set_reg_data(user_id, {"step": "name", "lang": code})
+            db.set_reg_data(user_id, {"step":"name","lang":code})
             await update.message.reply_text(t(code,"ask_name"), parse_mode="Markdown",
                 reply_markup=ReplyKeyboardMarkup([[]], resize_keyboard=True))
             return
 
-    # Ism
     if step == "name":
         if len(text.split()) < 2:
             await update.message.reply_text(t(lang,"name_err"), parse_mode="Markdown")
             return
-        db.set_reg_data(user_id, {"step": "age", "lang": lang, "full_name": text})
+        reg["full_name"] = text
+        reg["step"] = "age"
+        db.set_reg_data(user_id, reg)
         await update.message.reply_text(t(lang,"ask_age"), parse_mode="Markdown")
         return
 
-    # Yosh
     if step == "age":
         if not text.isdigit() or not (1 <= int(text) <= 120):
             await update.message.reply_text(t(lang,"age_err"), parse_mode="Markdown")
             return
         reg["age"] = text
-        reg["step"] = "phone"
+        # Username avtomatik olamiz
+        reg["username"] = user.username or ""
+        reg["step"] = "done"
         db.set_reg_data(user_id, reg)
-        phone_btn = KeyboardButton(t(lang,"phone_btn"), request_contact=True)
-        await update.message.reply_text(t(lang,"ask_phone"),
+        # Telefon so'raymiz
+        phone_btn = KeyboardButton("📱 Raqamni ulashish" if lang=="uz" else ("📱 Поделиться" if lang=="ru" else "📱 Share"), request_contact=True)
+        await update.message.reply_text(
+            "📱 Telefon raqamingizni yuboring:" if lang=="uz" else ("📱 Поделитесь номером:" if lang=="ru" else "📱 Share your phone number:"),
             reply_markup=ReplyKeyboardMarkup([[phone_btn]], resize_keyboard=True, one_time_keyboard=True))
         return
 
@@ -397,27 +786,32 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     user_id = user.id
     reg = db.get_reg_data(user_id)
-    lang = reg.get("lang", "uz")
+    lang = reg.get("lang","uz")
 
-    db.save_user({
+    user_info = {
         "user_id":        user_id,
-        "username":       user.username or "",
+        "username":       reg.get("username", user.username or ""),
         "full_name":      reg.get("full_name", user.first_name or "—"),
-        "age":            reg.get("age", "—"),
+        "age":            reg.get("age","—"),
         "phone":          update.message.contact.phone_number,
         "lang":           lang,
         "registered":     True,
         "registered_at":  datetime.utcnow().isoformat(),
-        "analysis_count": 0
-    })
+        "analysis_count": 0,
+        "today_free_count": 0,
+        "last_free_date": "",
+    }
+    db.save_user(user_info)
     db.clear_reg_data(user_id)
 
-    await update.message.reply_text(t(lang,"registered"), parse_mode="Markdown",
-        reply_markup=ReplyKeyboardMarkup([[]], resize_keyboard=True))
+    await update.message.reply_text(
+        t(lang,"registered"), parse_mode="Markdown",
+        reply_markup=main_menu_kb(lang)
+    )
 
-# ─── UMUMIY TEKSHIRUV ─────────────────────────────────────────────────────────
-async def _check_user_ready(update, context):
-    """Obuna va ro'yxatdan o'tishni tekshiradi. (user_data, lang) qaytaradi yoki None."""
+# ─── FAYLNI QABUL QILISH ──────────────────────────────────────────────────────
+async def _check_ready_and_limit(update, context):
+    """(user_data, lang, is_premium) yoki None qaytaradi"""
     user_id = update.message.from_user.id
 
     if not await check_subscription(context.bot, user_id):
@@ -425,64 +819,79 @@ async def _check_user_ready(update, context):
         kb = InlineKeyboardMarkup([[InlineKeyboardButton(t(lang,"sub_btn"),
             url=f"https://t.me/{SUBSCRIBE_CH.lstrip('@')}")]])
         await update.message.reply_text(t(lang,"not_sub"), reply_markup=kb)
-        return None, None
+        return None, None, None
 
     user_data = db.get_user(user_id)
     if not user_data or not user_data.get("registered"):
         await update.message.reply_text(t("uz","start_first"))
-        return None, None
+        return None, None, None
 
-    return user_data, user_data.get("lang","uz")
+    lang = user_data.get("lang","uz")
+    is_prem = db.is_premium(user_id)
+    can, left = db.can_analyze(user_id)
 
-# ─── RASM HANDLER ─────────────────────────────────────────────────────────────
+    if not can:
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("💎 Premium", callback_data="show_premium")
+        ]])
+        await update.message.reply_text(t(lang,"limit_reached"), parse_mode="Markdown", reply_markup=kb)
+        return None, None, None
+
+    # Bepul foydalanuvchiga qolgan limit haqida eslatma
+    if not is_prem:
+        await update.message.reply_text(
+            t(lang,"free_left", left=left-1, limit=FREE_DAILY_LIMIT),
+            parse_mode="Markdown"
+        )
+
+    return user_data, lang, is_prem
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data, lang = await _check_user_ready(update, context)
+    user_data, lang, is_prem = await _check_ready_and_limit(update, context)
     if not user_data:
         return
-
     pos = await queue.add_to_queue(
-        user_id=update.message.from_user.id,
-        message=update.message,
-        context=context,
-        user_data=user_data,
-        lang=lang,
-        file_type="photo"
+        user_id=update.message.from_user.id, message=update.message,
+        context=context, user_data=user_data, lang=lang,
+        file_type="photo", is_premium=is_prem
     )
-    await update.message.reply_text(t(lang,"in_queue").replace("{pos}", str(pos)))
+    await update.message.reply_text(t(lang,"in_queue").replace("{pos}",str(pos)), parse_mode="Markdown")
 
-# ─── HUJJAT HANDLER (PDF / DOCX) ─────────────────────────────────────────────
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data, lang = await _check_user_ready(update, context)
+    user_data, lang, is_prem = await _check_ready_and_limit(update, context)
     if not user_data:
         return
-
     doc = update.message.document
     mime = doc.mime_type or ""
-    file_name = doc.file_name or ""
-
-    allowed = (
-        "pdf" in mime or
-        "msword" in mime or
-        "officedocument.word" in mime or
-        file_name.lower().endswith((".pdf", ".doc", ".docx"))
-    )
-
+    name = doc.file_name or ""
+    allowed = ("pdf" in mime or "msword" in mime or "officedocument.word" in mime
+               or name.lower().endswith((".pdf",".doc",".docx")))
     if not allowed:
         await update.message.reply_text(
-            "⚠️ Faqat PDF yoki Word (DOC/DOCX) hujjatlar qabul qilinadi.\n"
-            "Rasm yubormoqchi bo'lsangiz, galereya orqali yuboring 📸"
-        )
+            "⚠️ Faqat PDF yoki Word (DOC/DOCX) hujjatlar.\n📸 Rasm uchun galereya orqali yuboring.")
         return
-
     pos = await queue.add_to_queue(
-        user_id=update.message.from_user.id,
-        message=update.message,
-        context=context,
-        user_data=user_data,
-        lang=lang,
-        file_type="document"
+        user_id=update.message.from_user.id, message=update.message,
+        context=context, user_data=user_data, lang=lang,
+        file_type="document", is_premium=is_prem
     )
-    await update.message.reply_text(t(lang,"in_queue").replace("{pos}", str(pos)))
+    await update.message.reply_text(t(lang,"in_queue").replace("{pos}",str(pos)), parse_mode="Markdown")
+
+# ─── ADMIN: PREMIUM BERISH ────────────────────────────────────────────────────
+async def admin_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != ADMIN_ID:
+        return
+    # /premium 12345678 1m
+    try:
+        args = context.args
+        target_id = int(args[0])
+        period = args[1]  # 1m, 3m, 12m
+        days = {"1m":30,"3m":90,"12m":365}.get(period,30)
+        until = (date.today() + timedelta(days=days)).isoformat()
+        db.set_premium(target_id, until)
+        await update.message.reply_text(f"✅ Premium berildi: {target_id}\nMuddati: {until}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: /premium USER_ID 1m\n{e}")
 
 # ─── QUEUE WORKER ─────────────────────────────────────────────────────────────
 async def process_queue_worker(app):
@@ -496,82 +905,78 @@ async def process_queue_worker(app):
         message   = task["message"]
         user_data = task["user_data"]
         lang      = task["lang"]
-        file_type = task.get("file_type", "photo")
+        file_type = task.get("file_type","photo")
+        is_prem   = task.get("is_premium", False)
 
         try:
-            status_msg = await app.bot.send_message(chat_id=user_id, text=t(lang,"processing"))
+            status_msg = await app.bot.send_message(chat_id=user_id, text=t(lang,"processing"), parse_mode="Markdown")
             age = user_data.get("age","")
             result = None
+            doc_type = "Rasm" if file_type == "photo" else "Hujjat"
 
-            # ── RASM ──
             if file_type == "photo":
                 photo = message.photo[-1]
                 file  = await app.bot.get_file(photo.file_id)
                 image_bytes = bytes(await file.download_as_bytearray())
                 if GEMINI_API_KEY:
-                    result = await analyze_image_gemini(image_bytes, lang, age)
+                    result = await analyze_image_gemini(image_bytes, lang, age, is_prem)
 
-            # ── HUJJAT (PDF/DOCX) ──
             elif file_type == "document":
                 doc  = message.document
                 file = await app.bot.get_file(doc.file_id)
                 file_bytes = bytes(await file.download_as_bytearray())
                 mime = doc.mime_type or ""
                 name = doc.file_name or ""
-
-                if "pdf" in mime or name.lower().endswith(".pdf"):
-                    doc_text = extract_pdf_text(file_bytes)
-                else:
-                    doc_text = extract_docx_text(file_bytes)
-
-                if not doc_text:
-                    await app.bot.edit_message_text(
-                        chat_id=user_id,
-                        message_id=status_msg.message_id,
-                        text=t(lang,"no_text_doc")
-                    )
+                doc_type = "PDF" if "pdf" in mime or name.lower().endswith(".pdf") else "Word"
+                text_content = extract_pdf_text(file_bytes) if "pdf" in mime or name.lower().endswith(".pdf") else extract_docx_text(file_bytes)
+                if not text_content:
+                    await app.bot.edit_message_text(chat_id=user_id, message_id=status_msg.message_id, text=t(lang,"no_text_doc"))
+                    db.increment_today(user_id)
                     queue.task_done()
                     continue
-
                 if GEMINI_API_KEY:
-                    result = await analyze_text_gemini(doc_text, lang, age)
+                    result = await analyze_text_gemini(text_content, lang, age, is_prem)
 
             if not GEMINI_API_KEY:
-                result = (
-                    "⚠️ *GEMINI_API_KEY sozlanmagan!*\n\n"
-                    "Railway → Variables:\n`GEMINI_API_KEY = AIzaSy...`\n\n"
-                    "Bepul: https://aistudio.google.com"
-                )
+                result = "⚠️ *GEMINI_API_KEY yo'q!*\nRailway Variables ga qo'shing:\nhttps://aistudio.google.com"
 
             if not result:
                 result = t(lang,"error")
 
+            # Limit hisobiga qo'shish
+            db.increment_today(user_id)
+
             # Foydalanuvchiga natija
             await app.bot.edit_message_text(
-                chat_id=user_id,
-                message_id=status_msg.message_id,
-                text=result,
-                parse_mode="Markdown"
+                chat_id=user_id, message_id=status_msg.message_id,
+                text=result, parse_mode="Markdown"
             )
 
+            # Tarixga saqlash
+            db.add_history(user_id, {
+                "date": datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
+                "type": doc_type,
+                "result_preview": result[:200]
+            })
+
             # Log kanalga
-            name_str = user_data.get("full_name") or "—"
-            username = f"@{user_data['username']}" if user_data.get("username") else "—"
-            phone    = user_data.get("phone") or "—"
-            age_str  = user_data.get("age") or "—"
             count    = db.increment_analysis(user_id)
+            name_str = user_data.get("full_name","—")
+            username = f"@{user_data['username']}" if user_data.get("username") else "—"
+            phone    = user_data.get("phone","—")
+            age_str  = user_data.get("age","—")
             now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
-            ftype_label = "📄 Hujjat" if file_type == "document" else "🖼 Rasm"
+            prem_label = "💎 Premium" if is_prem else "🆓 Bepul"
 
             log_caption = (
-                f"🧠 *Radiology AI — Tahlil #{count}*\n"
+                f"🧠 *Radiology AI — #{count}*\n"
                 f"{'─'*28}\n"
                 f"👤 *Ism:* {name_str}\n"
                 f"🎂 *Yosh:* {age_str}\n"
                 f"📱 *Tel:* `{phone}`\n"
                 f"🔹 *Username:* {username}\n"
                 f"🆔 *ID:* `{user_id}`\n"
-                f"{ftype_label}\n"
+                f"📄 *Tur:* {doc_type} | {prem_label}\n"
                 f"🕐 {now} UTC\n"
                 f"{'─'*28}\n"
                 f"📄 *Natija:*\n{result[:900]}"
@@ -579,20 +984,16 @@ async def process_queue_worker(app):
 
             try:
                 if file_type == "photo":
-                    await app.bot.send_photo(
-                        chat_id=LOG_CH, photo=message.photo[-1].file_id,
-                        caption=log_caption, parse_mode="Markdown"
-                    )
+                    await app.bot.send_photo(chat_id=LOG_CH, photo=message.photo[-1].file_id,
+                        caption=log_caption, parse_mode="Markdown")
                 else:
-                    await app.bot.send_document(
-                        chat_id=LOG_CH, document=message.document.file_id,
-                        caption=log_caption, parse_mode="Markdown"
-                    )
+                    await app.bot.send_document(chat_id=LOG_CH, document=message.document.file_id,
+                        caption=log_caption, parse_mode="Markdown")
             except Exception as e:
-                logger.warning(f"Log kanal xatosi: {e}")
+                logger.warning(f"Log kanal: {e}")
 
         except Exception as e:
-            logger.error(f"Worker xato: {e}", exc_info=True)
+            logger.error(f"Worker: {e}", exc_info=True)
             try:
                 await app.bot.send_message(chat_id=user_id, text=t(lang,"error"))
             except:
@@ -603,12 +1004,14 @@ async def process_queue_worker(app):
 
 async def post_init(app):
     asyncio.create_task(process_queue_worker(app))
-    logger.info("✅ Bot va queue worker ishga tushdi")
+    logger.info("✅ Bot ishga tushdi")
 
 def main():
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("premium", admin_premium))
     app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="check_sub"))
+    app.add_handler(CallbackQueryHandler(payment_callback, pattern="^(prem:|manual:|show_premium)"))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
