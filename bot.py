@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 TOKEN          = os.getenv("BOT_TOKEN", "BOT_TOKENINGIZ")
 SUBSCRIBE_CH   = os.getenv("SUBSCRIBE_CHANNEL", "@RadiologyGroupChat")
-LOG_CH         = os.getenv("LOG_CHANNEL", "@RadialogyAI")
+LOG_CH         = os.getenv("LOG_CHANNEL", "@RadialogyAIdrgdgdagaggggggggAFEW")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ADMIN_ID       = int(os.getenv("ADMIN_ID", "0"))   # sizning Telegram ID
 
