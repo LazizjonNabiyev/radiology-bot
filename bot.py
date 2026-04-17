@@ -96,7 +96,7 @@ def t(lang, key, **kw):
                 "💳 *Qo'lda to'lov*\n\n"
                 "Quyidagi karta raqamiga o'tkazing:\n\n"
                 "🏦 *{amount:,} so'm*\n"
-                "💳 `9860190110089898`\n"
+                "💳 `9860 1901 1008 9898`\n"
                 "👤 Egasi: Laziz Nabiyev\n\n"
                 "✅ To'lovdan so'ng chekni @Technologeee ga yuboring.\n"
                 "Premium 1 soat ichida yoqiladi."
@@ -123,9 +123,9 @@ def t(lang, key, **kw):
             "contact_info":  (
                 "📞 *Aloqa*\n\n"
                 "❓ Savol yoki muammo bo'lsa:\n\n"
-                "👨‍💻 Admin: @RadiologyAIAdmin\n"
+                "👨‍💻 Admin: @Technologeee\n"
                 "📢 Kanal: {ch}\n"
-                "📧 Email: info@radiologyai.uz\n\n"
+                "📧 Email: lazizaxrorovich@gmail.com\n\n"
                 "⏰ Ish vaqti: 09:00 — 22:00"
             ),
             # Umumiy
@@ -180,9 +180,9 @@ def t(lang, key, **kw):
                 "💳 *Оплата вручную*\n\n"
                 "Переведите на карту:\n\n"
                 "🏦 *{amount:,} сум*\n"
-                "💳 `8600 1234 5678 9012`\n"
-                "👤 Получатель: Radiology AI\n\n"
-                "✅ После оплаты отправьте чек @RadiologyAIAdmin.\n"
+                "💳 `9860 1901 1008 9898`\n"
+                "👤 Получатель: Laziz Nabiyev\n\n"
+                "✅ После оплаты отправьте чек @Technologeee.\n"
                 "Premium активируется в течение 1 часа."
             ),
             "premium_active": "💎 *Premium активен!*\n\nДействует до: *{until}*\n\nВсе возможности открыты ✅",
@@ -260,9 +260,9 @@ def t(lang, key, **kw):
                 "💳 *Manual payment*\n\n"
                 "Transfer to this card:\n\n"
                 "🏦 *{amount:,} UZS*\n"
-                "💳 `8600 1234 5678 9012`\n"
-                "👤 Recipient: Radiology AI\n\n"
-                "✅ Send receipt to @RadiologyAIAdmin after payment.\n"
+                "💳 `9860 1901 1008 9898`\n"
+                "👤 Recipient: Laziz Nabiyev\n\n"
+                "✅ Send receipt to @Technologeee after payment.\n"
                 "Premium activated within 1 hour."
             ),
             "premium_active": "💎 *Premium active!*\n\nValid until: *{until}*\n\nAll features unlocked ✅",
