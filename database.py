@@ -1,100 +1,78 @@
 """
-database.py — SQLite asosida (Railway Volume bilan persistent)
+database.py
+Foydalanuvchilar + ro'yxatdan o'tish holati JSON da saqlanadi.
+context.user_data ishlatilmaydi - chunki Railway restart bo'lsa yo'qoladi.
 """
-import sqlite3
-import os
+import json, os
 from typing import Optional, Dict, Any
 
-DB_FILE = "/data/users.db"
+USERS_FILE = "users.json"
+REG_FILE   = "reg_temp.json"   # vaqtinchalik ro'yxatdan o'tish holati
 
 class Database:
-    def __init__(self):
-        os.makedirs("/data", exist_ok=True)
-        self._init_db()
+    def _load(self, path) -> dict:
+        if not os.path.exists(path):
+            return {}
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except:
+            return {}
 
-    def _conn(self):
-        return sqlite3.connect(DB_FILE)
+    def _save(self, path, data: dict):
+        with open(path, "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def _init_db(self):
-        with self._conn() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id     TEXT PRIMARY KEY,
-                    username    TEXT DEFAULT '',
-                    full_name   TEXT DEFAULT '',
-                    phone       TEXT DEFAULT '',
-                    lang        TEXT DEFAULT 'uz',
-                    registered_at TEXT DEFAULT '',
-                    analysis_count INTEGER DEFAULT 0
-                )
-            """)
-            conn.commit()
-
+    # ── FOYDALANUVCHILAR ──────────────────────────────────────────────────────
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM users WHERE user_id = ?", (str(user_id),)
-            ).fetchone()
-        if not row:
-            return None
-        return {
-            "user_id": row[0],
-            "username": row[1],
-            "full_name": row[2],
-            "phone": row[3],
-            "lang": row[4],
-            "registered_at": row[5],
-            "analysis_count": row[6]
-        }
+        return self._load(USERS_FILE).get(str(user_id))
 
-    def save_user(self, user_info: dict):
-        with self._conn() as conn:
-            conn.execute("""
-                INSERT INTO users (user_id, username, full_name, phone, lang, registered_at, analysis_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    username = excluded.username,
-                    full_name = excluded.full_name,
-                    phone = excluded.phone,
-                    lang = excluded.lang,
-                    registered_at = excluded.registered_at
-            """, (
-                str(user_info["user_id"]),
-                user_info.get("username", ""),
-                user_info.get("full_name", ""),
-                user_info.get("phone", ""),
-                user_info.get("lang", "uz"),
-                user_info.get("registered_at", ""),
-                user_info.get("analysis_count", 0)
-            ))
-            conn.commit()
+    def save_user(self, info: dict):
+        data = self._load(USERS_FILE)
+        data[str(info["user_id"])] = info
+        self._save(USERS_FILE, data)
 
     def get_user_lang(self, user_id: int) -> Optional[str]:
-        user = self.get_user(user_id)
-        return user.get("lang") if user else None
+        u = self.get_user(user_id)
+        return u.get("lang") if u else None
 
     def set_user_lang(self, user_id: int, lang: str):
-        with self._conn() as conn:
-            conn.execute("""
-                INSERT INTO users (user_id, lang) VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET lang = excluded.lang
-            """, (str(user_id), lang))
-            conn.commit()
+        data = self._load(USERS_FILE)
+        uid = str(user_id)
+        if uid not in data:
+            data[uid] = {}
+        data[uid]["lang"] = lang
+        self._save(USERS_FILE, data)
 
     def increment_analysis(self, user_id: int) -> int:
-        with self._conn() as conn:
-            conn.execute("""
-                UPDATE users SET analysis_count = analysis_count + 1
-                WHERE user_id = ?
-            """, (str(user_id),))
-            conn.commit()
-            row = conn.execute(
-                "SELECT analysis_count FROM users WHERE user_id = ?", (str(user_id),)
-            ).fetchone()
-        return row[0] if row else 1
+        data = self._load(USERS_FILE)
+        uid = str(user_id)
+        count = data.get(uid, {}).get("analysis_count", 0) + 1
+        if uid in data:
+            data[uid]["analysis_count"] = count
+        self._save(USERS_FILE, data)
+        return count
 
-    def total_users(self) -> int:
-        with self._conn() as conn:
-            return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    # ── RO'YXATDAN O'TISH HOLATI (DB DA) ─────────────────────────────────────
+    def get_reg_data(self, user_id: int) -> dict:
+        return self._load(REG_FILE).get(str(user_id), {"step": "lang"})
+
+    def set_reg_step(self, user_id: int, step: str):
+        data = self._load(REG_FILE)
+        uid = str(user_id)
+        if uid not in data:
+            data[uid] = {}
+        data[uid]["step"] = step
+        self._save(REG_FILE, data)
+
+    def set_reg_data(self, user_id: int, reg_data: dict):
+        data = self._load(REG_FILE)
+        data[str(user_id)] = reg_data
+        self._save(REG_FILE, data)
+
+    def clear_reg_data(self, user_id: int):
+        data = self._load(REG_FILE)
+        data.pop(str(user_id), None)
+        self._save(REG_FILE, data)
 
 db = Database()
