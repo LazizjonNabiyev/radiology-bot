@@ -38,10 +38,17 @@ queue = AnalysisQueue()
 
 # ─── SUBSCRIPTION ─────────────────────────────────────────────────────────────
 async def check_subscription(bot, user_id):
+    """
+    Kanal/guruhga obunani tekshiradi.
+    Bot kanalga ADMIN bo'lmasa ham PUBLIC kanal uchun ishlaydi.
+    GURUH uchun bot albatta ADMIN bo'lishi kerak.
+    """
     try:
         member = await bot.get_chat_member(chat_id=SUBSCRIBE_CH, user_id=user_id)
         return member.status in ["member", "administrator", "creator"]
-    except:
+    except Exception as e:
+        logger.warning(f"Obuna tekshirishda xato ({SUBSCRIBE_CH}): {e}")
+        # Xato bo'lsa — botni kanalga/guruhga admin qiling
         return False
 
 # ─── TEXTS ────────────────────────────────────────────────────────────────────
@@ -565,10 +572,10 @@ Each diagnosis supported by clinical findings]
             {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
             {"text": prompt}
         ]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 3000}
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         r = await client.post(url, json=payload)
 
     if r.status_code == 200:
@@ -791,10 +798,10 @@ Write a full response in this format:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 3000}
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         r = await client.post(url, json=payload)
 
     if r.status_code == 200:
@@ -1170,162 +1177,163 @@ async def admin_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── PDF NATIJA YARATISH ──────────────────────────────────────────────────────
 def result_to_pdf(result_text: str, user_data: dict, lang: str) -> bytes:
-    """Tahlil natijasini PDF ga aylantiradi"""
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    import io, os
+    import io, os, re
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=2*cm, bottomMargin=2*cm)
 
-    # Shrift — DejaVu (Unicode, kirill va lotin uchun)
+    # Unicode shrift — o'zbek, rus, ingliz harflari uchun
+    font_name = "Helvetica"
+    font_bold = "Helvetica-Bold"
     font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/dejavu/DejaVuSans.ttf",
+         "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
     ]
-    font_name = "Helvetica"  # fallback
-    for fp in font_paths:
-        if os.path.exists(fp):
+    for reg_fp, bold_fp in font_paths:
+        if os.path.exists(reg_fp):
             try:
-                pdfmetrics.registerFont(TTFont("DejaVu", fp))
-                font_name = "DejaVu"
+                pdfmetrics.registerFont(TTFont("UniFont", reg_fp))
+                font_name = "UniFont"
+                if os.path.exists(bold_fp):
+                    pdfmetrics.registerFont(TTFont("UniFont-Bold", bold_fp))
+                    font_bold = "UniFont-Bold"
             except:
                 pass
             break
 
-    styles = getSampleStyleSheet()
-    header_style = ParagraphStyle("header", fontName=font_name, fontSize=15,
+    # Stillar
+    title_style  = ParagraphStyle("title", fontName=font_bold, fontSize=16,
                                    textColor=colors.HexColor("#1a3a5c"),
-                                   spaceAfter=4, spaceBefore=6, leading=20)
-    normal_style = ParagraphStyle("normal", fontName=font_name, fontSize=10,
-                                   leading=15, spaceAfter=3)
+                                   spaceAfter=4, leading=22)
+    section_style= ParagraphStyle("sec", fontName=font_bold, fontSize=11,
+                                   textColor=colors.HexColor("#1a3a5c"),
+                                   spaceAfter=2, spaceBefore=10, leading=16)
+    normal_style = ParagraphStyle("nrm", fontName=font_name, fontSize=10,
+                                   leading=16, spaceAfter=2)
+    bullet_style = ParagraphStyle("blt", fontName=font_name, fontSize=10,
+                                   leading=15, spaceAfter=1, leftIndent=12)
     meta_style   = ParagraphStyle("meta", fontName=font_name, fontSize=9,
-                                   textColor=colors.HexColor("#555555"), leading=13)
-    warn_style   = ParagraphStyle("warn", fontName=font_name, fontSize=9,
+                                   textColor=colors.HexColor("#444444"), leading=14)
+    warn_style   = ParagraphStyle("wrn", fontName=font_name, fontSize=9,
                                    textColor=colors.HexColor("#cc0000"),
-                                   leading=13, spaceAfter=6)
+                                   leading=13, spaceAfter=4)
+
+    def safe(text):
+        """XML special chars ni tozalash"""
+        return (text.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;"))
 
     story = []
 
-    # Sarlavha
-    story.append(Paragraph("🧠 Radiology AI — Tahlil Natijasi", header_style))
-    story.append(HRFlowable(width="100%", thickness=1.5,
-                             color=colors.HexColor("#1a3a5c"), spaceAfter=6))
+    # ── SARLAVHA ──
+    story.append(Paragraph("🧠 Radiology AI", title_style))
+    story.append(Paragraph("Tibbiy tahlil natijasi", meta_style))
+    story.append(HRFlowable(width="100%", thickness=2,
+                             color=colors.HexColor("#1a3a5c"), spaceAfter=8))
 
-    # Bemor ma'lumotlari
+    # ── BEMOR MA'LUMOTLARI ──
     name     = user_data.get("full_name", "—")
     age      = user_data.get("age", "—")
     phone    = user_data.get("phone", "—")
-    username = f"@{user_data['username']}" if user_data.get("username") else "—"
+    username = f"@{user_data.get('username', '—')}" if user_data.get("username") else "—"
     now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M") + " UTC"
 
-    meta_lines = [
-        f"👤  Bemor: {name}",
-        f"🎂  Yosh: {age}",
-        f"📱  Telefon: {phone}",
-        f"🔹  Username: {username}",
-        f"🕐  Tahlil vaqti: {now}",
+    meta_rows = [
+        ("Bemor", name), ("Yosh", str(age)),
+        ("Telefon", phone), ("Username", username), ("Tahlil vaqti", now),
     ]
-    for ml in meta_lines:
-        story.append(Paragraph(ml, meta_style))
+    for label, val in meta_rows:
+        story.append(Paragraph(f"<b>{safe(label)}:</b>  {safe(val)}", meta_style))
 
-    story.append(Spacer(1, 6))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                             color=colors.HexColor("#cccccc"), spaceAfter=8))
+    story.append(Spacer(1, 8))
+    story.append(HRFlowable(width="100%", thickness=0.8,
+                             color=colors.HexColor("#bbbbbb"), spaceAfter=10))
 
-    # Natija matni — har qatorni qayta ishlash
-    import re
-    # Markdown tozalash: *, _, `
-    clean = re.sub(r"[*_`]", "", result_text)
+    # ── NATIJA MATNI — BARCHA QATORLAR ──
+    # Markdown * _ ` ni tozalash
+    clean = re.sub(r"\*\*(.+?)\*\*", r"", result_text)
+    clean = re.sub(r"\*(.+?)\*", r"", clean)
+    clean = re.sub(r"_(.+?)_", r"", clean)
+    clean = re.sub(r"`(.+?)`", r"", clean)
 
-    for line in clean.split("\n"):
-        line = line.strip()
-        if not line:
+    lines = clean.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip()
+
+        # Bo'sh qator
+        if not line.strip():
             story.append(Spacer(1, 4))
+            i += 1
             continue
-        if line.startswith("━"):
-            story.append(HRFlowable(width="100%", thickness=0.5,
-                                     color=colors.HexColor("#1a3a5c"), spaceAfter=4))
-            continue
-        # Sarlavha bo'limlari (emoji bilan boshlanadigan katta qatorlar)
-        if any(line.startswith(e) for e in ["🖼","🔬","📋","⚠️","🩺","💊","📄","⚕️"]):
-            story.append(Paragraph(line, header_style))
-        elif line.startswith("•") or line.startswith("-"):
-            story.append(Paragraph("  " + line, normal_style))
-        elif "Muhim" in line or "Важно" in line or "Important" in line or "eslatma" in line.lower():
-            story.append(Paragraph(line, warn_style))
-        else:
-            story.append(Paragraph(line, normal_style))
 
-    story.append(Spacer(1, 10))
-    story.append(HRFlowable(width="100%", thickness=0.5,
-                             color=colors.HexColor("#cccccc"), spaceAfter=4))
+        # Ajratuvchi chiziq (━━━)
+        if line.strip().startswith("━") or line.strip().startswith("─"):
+            story.append(HRFlowable(width="100%", thickness=0.5,
+                                     color=colors.HexColor("#1a3a5c"), spaceAfter=2))
+            i += 1
+            continue
+
+        # Bo'lim sarlavhalari (emoji bilan)
+        section_emojis = ("🖼", "🔬", "📋", "⚠️", "🩺", "💊", "📄", "⚕️",
+                          "🖼️", "🏥", "📊", "🔎", "💉", "🩻")
+        if any(line.strip().startswith(e) for e in section_emojis):
+            # ⚕️ eslatma — qizil
+            if line.strip().startswith("⚕️"):
+                story.append(Paragraph(safe(line.strip()), warn_style))
+            else:
+                story.append(Paragraph(safe(line.strip()), section_style))
+            i += 1
+            continue
+
+        # Bullet point
+        stripped = line.strip()
+        if stripped.startswith(("• ", "- ", "– ", "* ", "· ")):
+            text_part = stripped[2:].strip()
+            story.append(Paragraph("• " + safe(text_part), bullet_style))
+            i += 1
+            continue
+
+        # Raqamli ro'yxat (1. 2. ...)
+        if re.match(r"^\d+\.", stripped):
+            story.append(Paragraph(safe(stripped), bullet_style))
+            i += 1
+            continue
+
+        # Oddiy matn
+        story.append(Paragraph(safe(stripped), normal_style))
+        i += 1
+
+    # ── OXIRGI ESLATMA ──
+    story.append(Spacer(1, 14))
+    story.append(HRFlowable(width="100%", thickness=0.8,
+                             color=colors.HexColor("#bbbbbb"), spaceAfter=6))
     story.append(Paragraph(
-        "⚕️ Bu Radiology AI tomonidan yaratilgan avtomatik tahlil bo'lib, "
-        "rasmiy tibbiy tashxis emas. Aniq tashxis uchun mutaxassis shifokorga murojaat qiling.",
+        "⚕️ Muhim: Bu Radiology AI sun'iy intellekti tomonidan yaratilgan "
+        "avtomatik tahlil bo'lib, rasmiy tibbiy tashxis o'rnini bosa olmaydi. "
+        "Aniq tashxis, davo rejasi va dori buyurish uchun albatta "
+        "mutaxassis shifokorga murojaat qiling.",
         warn_style
     ))
 
     doc.build(story)
     return buf.getvalue()
 
-
-async def send_result_to_user(bot, user_id, status_msg_id, result, lang, user_data):
-    """
-    Natijani har doim PDF sifatida yuboradi.
-    PDF ishlamasa — matnni bo'lib yuboradi.
-    """
-    # Status xabarni o'chirish
-    try:
-        await bot.delete_message(chat_id=user_id, message_id=status_msg_id)
-    except:
-        pass
-
-    pdf_labels = {
-        "uz": "✅ *Tahlil tayyor!*\n\n📄 To'liq natija PDF faylda — faylni oching, hamma ma'lumot to'liq kelgan.",
-        "ru": "✅ *Анализ готов!*\n\n📄 Полный результат в PDF файле — откройте файл, вся информация полная.",
-        "en": "✅ *Analysis complete!*\n\n📄 Full result in PDF file — open the file for complete information.",
-    }
-    pdf_caption = {
-        "uz": "🧠 Radiology AI — To'liq tahlil natijasi",
-        "ru": "🧠 Radiology AI — Полный результат анализа",
-        "en": "🧠 Radiology AI — Full Analysis Report",
-    }
-
-    try:
-        import io
-        pdf_bytes = result_to_pdf(result, user_data, lang)
-        pdf_file = io.BytesIO(pdf_bytes)
-        pdf_file.name = "Radiology_AI_Tahlil.pdf"
-        await bot.send_message(
-            chat_id=user_id,
-            text=pdf_labels.get(lang, pdf_labels["uz"]),
-            parse_mode="Markdown"
-        )
-        await bot.send_document(
-            chat_id=user_id,
-            document=pdf_file,
-            filename="Radiology_AI_Tahlil.pdf",
-            caption=pdf_caption.get(lang, pdf_caption["uz"])
-        )
-        logger.info(f"PDF yuborildi: user {user_id}, {len(pdf_bytes)} bytes")
-    except Exception as e:
-        logger.error(f"PDF xato ({e}) — matn sifatida yuborilmoqda")
-        chunks = [result[i:i+3800] for i in range(0, len(result), 3800)]
-        for i, chunk in enumerate(chunks):
-            try:
-                header = f"📄 *Natija ({i+1}/{len(chunks)}):*\n\n" if len(chunks) > 1 else ""
-                await bot.send_message(chat_id=user_id, text=header + chunk, parse_mode="Markdown")
-            except:
-                await bot.send_message(chat_id=user_id, text=chunk)
 
 # ─── QUEUE WORKER ─────────────────────────────────────────────────────────────
 async def process_queue_worker(app):
@@ -1450,10 +1458,11 @@ def main():
     app.add_handler(CommandHandler("premium", admin_premium))
     app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="check_sub"))
     app.add_handler(CallbackQueryHandler(payment_callback, pattern="^(prem:|manual:|show_premium)"))
-    app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    # filters.ChatType.PRIVATE — faqat shaxsiy xabarlar, kanal/guruh xabarlari e'tiborga olinmaydi
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.CONTACT, handle_contact))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.Document.ALL, handle_document))
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_text))
     logger.info("🤖 Radiology AI Bot ishlamoqda...")
     app.run_polling(drop_pending_updates=True)
 
