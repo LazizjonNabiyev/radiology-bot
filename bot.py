@@ -338,12 +338,13 @@ async def analyze_image_gemini(image_bytes, lang, age="", is_premium=False):
 Quyidagi tibbiy tasvir senga yuborildi. Uni eng yuqori professional darajada tahlil qil.
 
 MUHIM QOIDALAR:
+- SALOM, KIRISH SO'ZI YOKI O'Z-O'ZINI TANISHTIRISH YOZMA — BIRINCHI SATRDAN TAHLILNI BOSHLA
+- Yosh farqini, profil ma'lumotlarini HECH QACHON tilga olma
 - Har bir bo'limda KAM DEGANDA 3-5 ta aniq gap yoz
 - Umumiy, bo'sh gaplar yozma — aniq klinik ma'lumot ber
 - Ko'rsatkichlarni normallar bilan taqqoslab ko'rsat
 - Foydalanuvchi bu xulosani o'qib, o'z ahvoli haqida TO'LIQ tushuncha olishi kerak
 - Tibbiy terminlarni oddiy so'zlar bilan izohlat
-- Yosh nomuvofiqligini HECH QACHON tilga olma — faqat tibbiy tahlil yoz
 
 Quyidagi formatda to'liq va batafsil javob yoz:
 
@@ -411,6 +412,8 @@ Har bir tashxisni klinik belgilar bilan asoslang]
 Вам был отправлен медицинский снимок. Проведите анализ на высшем профессиональном уровне.
 
 ВАЖНЫЕ ПРАВИЛА:
+- НИКАКИХ приветствий, самопредставлений — СРАЗУ начинайте с первой строки анализа
+- Никогда не упоминайте расхождение возраста или данные профиля
 - В каждом разделе пишите МИНИМУМ 3-5 конкретных предложений
 - Никаких общих пустых фраз — давайте точную клиническую информацию
 - Сравнивайте показатели с нормой
@@ -483,6 +486,8 @@ Har bir tashxisni klinik belgilar bilan asoslang]
 A medical image has been sent to you. Analyze it at the highest professional level.
 
 IMPORTANT RULES:
+- NO greetings or self-introduction — START with the analysis on the very first line
+- Never mention age discrepancy or profile data
 - Write MINIMUM 3-5 specific sentences in each section
 - No vague general statements — provide precise clinical information
 - Compare findings with normal values
@@ -588,12 +593,13 @@ async def analyze_text_gemini(doc_text, lang, age="", is_premium=False):
 Senga quyidagi tibbiy hujjat taqdim etildi. Uni eng yuqori professional darajada tahlil qil.
 
 MUHIM QOIDALAR:
+- SALOM, KIRISH SO'ZI YOKI O'Z-O'ZINI TANISHTIRISH YOZMA — BIRINCHI SATRDAN TAHLILNI BOSHLA
+- Yosh farqini, profil ma'lumotlarini HECH QACHON tilga olma
 - Hujjatdagi BARCHA ma'lumotlarni ko'rib chiq va hech narsani o'tkazib yubora
 - Har bir bo'limda KAM DEGANDA 3-5 ta aniq gap yoz
 - Ko'rsatkichlarni normal qiymatlar bilan taqqosla
 - Foydalanuvchi TO'LIQ tushuncha olishi kerak — hujjatning har bir qatori muhim
 - Tibbiy terminlarni oddiy tilda izohlat
-- Yosh nomuvofiqligini HECH QACHON tilga olma — faqat tibbiy tahlil yoz
 
 HUJJAT MATNI:
 ━━━━━━━━━━━━━━━━━━━━━━━━
@@ -653,6 +659,8 @@ Quyidagi formatda to'liq javob yoz:
 Вам предоставлен медицинский документ для профессионального анализа.
 
 ВАЖНЫЕ ПРАВИЛА:
+- НИКАКИХ приветствий, самопредставлений — СРАЗУ начинайте с первой строки анализа
+- Никогда не упоминайте расхождение возраста или данные профиля
 - Изучите ВСЕ данные документа
 - В каждом разделе пишите МИНИМУМ 3-5 конкретных предложений
 - Сравнивайте показатели с нормальными значениями
@@ -717,6 +725,8 @@ Quyidagi formatda to'liq javob yoz:
 A medical document has been provided for your professional analysis.
 
 IMPORTANT RULES:
+- NO greetings or self-introduction — START with the analysis on the very first line
+- Never mention age discrepancy or profile data
 - Review ALL data in the document
 - Write MINIMUM 3-5 specific sentences in each section
 - Compare values against normal ranges
@@ -1270,47 +1280,52 @@ def result_to_pdf(result_text: str, user_data: dict, lang: str) -> bytes:
 
 async def send_result_to_user(bot, user_id, status_msg_id, result, lang, user_data):
     """
-    Natijani foydalanuvchiga yuboradi:
-    - Qisqa (<=3800 belgi) bo'lsa: oddiy matn xabari
-    - Uzun bo'lsa: PDF fayl + qisqa xabar
+    Natijani har doim PDF sifatida yuboradi.
+    PDF ishlamasa — matnni bo'lib yuboradi.
     """
-    TELEGRAM_LIMIT = 3800
-
-    # Matnni o'chirish (status xabari)
+    # Status xabarni o'chirish
     try:
         await bot.delete_message(chat_id=user_id, message_id=status_msg_id)
     except:
         pass
 
-    if len(result) <= TELEGRAM_LIMIT:
-        # Qisqa natija — to'g'ridan-to'g'ri yuborish
-        await bot.send_message(chat_id=user_id, text=result, parse_mode="Markdown")
-    else:
-        # Uzun natija — PDF + qisqa xulosa
-        short_labels = {
-            "uz": "📄 *Tahlil natijasi PDF faylda*\n\nQuyida to'liq xulosa saqlangi:",
-            "ru": "📄 *Результат анализа в PDF файле*\n\nПолное заключение ниже:",
-            "en": "📄 *Analysis result in PDF file*\n\nFull report below:",
-        }
-        try:
-            pdf_bytes = result_to_pdf(result, user_data, lang)
-            import io
-            pdf_file = io.BytesIO(pdf_bytes)
-            pdf_file.name = "radiology_ai_result.pdf"
-            await bot.send_message(chat_id=user_id,
-                                   text=short_labels.get(lang, short_labels["uz"]),
-                                   parse_mode="Markdown")
-            await bot.send_document(chat_id=user_id, document=pdf_file,
-                                    filename="Radiology_AI_Tahlil.pdf",
-                                    caption="🧠 Radiology AI — To'liq tahlil natijasi")
-        except Exception as e:
-            logger.error(f"PDF yaratishda xato: {e}")
-            # Fallback: matnni bo'lib yuborish
-            chunks = [result[i:i+3800] for i in range(0, len(result), 3800)]
-            for i, chunk in enumerate(chunks):
-                prefix = f"📄 *Natija ({i+1}/{len(chunks)})*\n\n" if len(chunks) > 1 else ""
-                await bot.send_message(chat_id=user_id,
-                                       text=prefix + chunk, parse_mode="Markdown")
+    pdf_labels = {
+        "uz": "✅ *Tahlil tayyor!*\n\n📄 To'liq natija PDF faylda — faylni oching, hamma ma'lumot to'liq kelgan.",
+        "ru": "✅ *Анализ готов!*\n\n📄 Полный результат в PDF файле — откройте файл, вся информация полная.",
+        "en": "✅ *Analysis complete!*\n\n📄 Full result in PDF file — open the file for complete information.",
+    }
+    pdf_caption = {
+        "uz": "🧠 Radiology AI — To'liq tahlil natijasi",
+        "ru": "🧠 Radiology AI — Полный результат анализа",
+        "en": "🧠 Radiology AI — Full Analysis Report",
+    }
+
+    try:
+        import io
+        pdf_bytes = result_to_pdf(result, user_data, lang)
+        pdf_file = io.BytesIO(pdf_bytes)
+        pdf_file.name = "Radiology_AI_Tahlil.pdf"
+        await bot.send_message(
+            chat_id=user_id,
+            text=pdf_labels.get(lang, pdf_labels["uz"]),
+            parse_mode="Markdown"
+        )
+        await bot.send_document(
+            chat_id=user_id,
+            document=pdf_file,
+            filename="Radiology_AI_Tahlil.pdf",
+            caption=pdf_caption.get(lang, pdf_caption["uz"])
+        )
+        logger.info(f"PDF yuborildi: user {user_id}, {len(pdf_bytes)} bytes")
+    except Exception as e:
+        logger.error(f"PDF xato ({e}) — matn sifatida yuborilmoqda")
+        chunks = [result[i:i+3800] for i in range(0, len(result), 3800)]
+        for i, chunk in enumerate(chunks):
+            try:
+                header = f"📄 *Natija ({i+1}/{len(chunks)}):*\n\n" if len(chunks) > 1 else ""
+                await bot.send_message(chat_id=user_id, text=header + chunk, parse_mode="Markdown")
+            except:
+                await bot.send_message(chat_id=user_id, text=chunk)
 
 # ─── QUEUE WORKER ─────────────────────────────────────────────────────────────
 async def process_queue_worker(app):
