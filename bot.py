@@ -3,6 +3,11 @@ import logging
 import base64
 import httpx
 import os
+import traceback
+
+except Exception as e:
+    logger.error(f"Worker error: {e}")
+    logger.error(traceback.format_exc())   # 🔥 MUHIM
 from datetime import datetime, date, timedelta
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton,
