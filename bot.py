@@ -3,8 +3,6 @@ import logging
 import base64
 import httpx
 import os
-import traceback
-
 from datetime import datetime, date, timedelta
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton,
@@ -1329,6 +1327,7 @@ async def send_result_to_user(bot, user_id, status_msg_id, result, lang, user_da
             except:
                 await bot.send_message(chat_id=user_id, text=chunk)
 
+# ─── QUEUE WORKER ─────────────────────────────────────────────────────────────
 async def process_queue_worker(app):
     while True:
         task = await queue.get_next()
@@ -1344,86 +1343,42 @@ async def process_queue_worker(app):
         is_prem   = task.get("is_premium", False)
 
         try:
-            status_msg = await app.bot.send_message(
-                chat_id=user_id,
-                text=t(lang,"processing"),
-                parse_mode="Markdown"
-            )
-
+            status_msg = await app.bot.send_message(chat_id=user_id, text=t(lang,"processing"), parse_mode="Markdown")
             age = user_data.get("age","")
             result = None
+            doc_type = "Rasm" if file_type == "photo" else "Hujjat"
 
-            # 📸 RASM
             if file_type == "photo":
                 photo = message.photo[-1]
                 file  = await app.bot.get_file(photo.file_id)
                 image_bytes = bytes(await file.download_as_bytearray())
-
                 if GEMINI_API_KEY:
                     result = await analyze_image_gemini(image_bytes, lang, age, is_prem)
 
-            # 📄 HUJJAT
             elif file_type == "document":
                 doc  = message.document
                 file = await app.bot.get_file(doc.file_id)
                 file_bytes = bytes(await file.download_as_bytearray())
-
                 mime = doc.mime_type or ""
                 name = doc.file_name or ""
-
-                is_pdf = "pdf" in mime or name.lower().endswith(".pdf")
-
-                text_content = (
-                    extract_pdf_text(file_bytes)
-                    if is_pdf else
-                    extract_docx_text(file_bytes)
-                )
-
-                if not text_content.strip():
-                    await app.bot.edit_message_text(
-                        chat_id=user_id,
-                        message_id=status_msg.message_id,
-                        text=t(lang,"no_text_doc")
-                    )
+                doc_type = "PDF" if "pdf" in mime or name.lower().endswith(".pdf") else "Word"
+                text_content = extract_pdf_text(file_bytes) if "pdf" in mime or name.lower().endswith(".pdf") else extract_docx_text(file_bytes)
+                if not text_content:
+                    await app.bot.edit_message_text(chat_id=user_id, message_id=status_msg.message_id, text=t(lang,"no_text_doc"))
                     db.increment_today(user_id)
+                    queue.task_done()
                     continue
-
                 if GEMINI_API_KEY:
                     result = await analyze_text_gemini(text_content, lang, age, is_prem)
 
-            # ❗ API KEY yo‘q bo‘lsa
             if not GEMINI_API_KEY:
                 result = "⚠️ *GEMINI_API_KEY yo'q!*\nRailway Variables ga qo'shing:\nhttps://aistudio.google.com"
 
-            # ❗ result yo‘q bo‘lsa
             if not result:
                 result = t(lang,"error")
 
-            # 📊 limit hisoblash
+            # Limit hisobiga qo'shish
             db.increment_today(user_id)
-
-            # ✅ PDF yuborish
-            await send_result_to_user(
-                bot=app.bot,
-                user_id=user_id,
-                status_msg_id=status_msg.message_id,
-                result=result,
-                lang=lang,
-                user_data=user_data,
-            )
-
-      
-           except Exception as e:
-    logger.error(f"Worker error: {e}")
-    logger.error(traceback.format_exc())   # 🔥 MUHIM
-            try:
-                await app.bot.send_message(chat_id=user_id, text=t(lang,"error"))
-            except:
-                pass
-
-        finally:
-            # 🔥 ENG MUHIM QATOR
-            queue.task_done()
 
             # ── NATIJANI YUBORISH (PDF yoki matn) ───────────────────────────
             await send_result_to_user(
