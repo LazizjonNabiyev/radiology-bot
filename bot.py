@@ -5,9 +5,6 @@ import httpx
 import os
 import traceback
 
-except Exception as e:
-    logger.error(f"Worker error: {e}")
-    logger.error(traceback.format_exc())   # 🔥 MUHIM
 from datetime import datetime, date, timedelta
 from telegram import (
     Update, ReplyKeyboardMarkup, InlineKeyboardButton,
@@ -1415,8 +1412,10 @@ async def process_queue_worker(app):
                 user_data=user_data,
             )
 
-        except Exception as e:
-            logger.error(f"Worker error: {e}")
+      
+           except Exception as e:
+    logger.error(f"Worker error: {e}")
+    logger.error(traceback.format_exc())   # 🔥 MUHIM
             try:
                 await app.bot.send_message(chat_id=user_id, text=t(lang,"error"))
             except:
