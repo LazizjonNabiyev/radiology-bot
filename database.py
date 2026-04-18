@@ -140,4 +140,45 @@ class Database:
     def get_history(self, user_id: int) -> List[dict]:
         return self._load(HISTORY_FILE).get(str(user_id), [])
 
+    def get_stats(self) -> dict:
+        """Umumiy statistika"""
+        users = self._load(USERS_FILE)
+        history = self._load(HISTORY_FILE)
+        
+        total_users = len(users)
+        premium_users = sum(1 for u in users.values() if u.get("premium_until", "") >= date.today().isoformat())
+        free_users = total_users - premium_users
+        
+        total_analyses = sum(u.get("analysis_count", 0) for u in users.values())
+        
+        # Bugun ro'yxatdan o'tganlar
+        today = date.today().isoformat()
+        today_registered = sum(
+            1 for u in users.values()
+            if (u.get("registered_at") or "")[:10] == today
+        )
+        
+        # Bugun tahlil qilganlar
+        today_active = sum(
+            1 for u in users.values()
+            if u.get("last_free_date") == today and u.get("today_free_count", 0) > 0
+        )
+        
+        # Tillar bo'yicha
+        langs = {"uz": 0, "ru": 0, "en": 0}
+        for u in users.values():
+            lang = u.get("lang", "uz")
+            if lang in langs:
+                langs[lang] += 1
+        
+        return {
+            "total_users": total_users,
+            "premium_users": premium_users,
+            "free_users": free_users,
+            "total_analyses": total_analyses,
+            "today_registered": today_registered,
+            "today_active": today_active,
+            "langs": langs,
+        }
+
 db = Database()
