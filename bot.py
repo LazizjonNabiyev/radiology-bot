@@ -1391,7 +1391,8 @@ async def process_queue_worker(app):
 
             if not result:
                 # Gemini None qaytardi — sababi logda ko'rinadi
-                logger.error(f"Gemini natija qaytarmadi. GEMINI_API_KEY: {'bor' if GEMINI_API_KEY else 'YO\'Q'}, file_type: {file_type}")
+                key_status = 'bor' if GEMINI_API_KEY else "YO'Q"
+                logger.error(f"Gemini natija qaytarmadi. GEMINI_API_KEY: {key_status}, file_type: {file_type}")
                 result = (
                     "❌ AI tahlil qila olmadi.\n\n"
                     "Sabablari:\n"
