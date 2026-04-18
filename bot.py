@@ -97,7 +97,7 @@ def t(lang, key, **kw):
                 "Quyidagi karta raqamiga o'tkazing:\n\n"
                 "🏦 *{amount:,} so'm*\n"
                 "💳 `9860 1901 1008 9898`\n"
-                "👤 Egasi: Laziz Nabiyev\n\n"
+                "👤 Egasi:Laziz Nabiyev\n\n"
                 "✅ To'lovdan so'ng chekni @Technologeee ga yuboring.\n"
                 "Premium 1 soat ichida yoqiladi."
             ),
@@ -1157,6 +1157,161 @@ async def admin_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Xato: /premium USER_ID 1m\n{e}")
 
+
+# ─── PDF NATIJA YARATISH ──────────────────────────────────────────────────────
+def result_to_pdf(result_text: str, user_data: dict, lang: str) -> bytes:
+    """Tahlil natijasini PDF ga aylantiradi"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import io, os
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    # Shrift — DejaVu (Unicode, kirill va lotin uchun)
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    ]
+    font_name = "Helvetica"  # fallback
+    for fp in font_paths:
+        if os.path.exists(fp):
+            try:
+                pdfmetrics.registerFont(TTFont("DejaVu", fp))
+                font_name = "DejaVu"
+            except:
+                pass
+            break
+
+    styles = getSampleStyleSheet()
+    header_style = ParagraphStyle("header", fontName=font_name, fontSize=15,
+                                   textColor=colors.HexColor("#1a3a5c"),
+                                   spaceAfter=4, spaceBefore=6, leading=20)
+    normal_style = ParagraphStyle("normal", fontName=font_name, fontSize=10,
+                                   leading=15, spaceAfter=3)
+    meta_style   = ParagraphStyle("meta", fontName=font_name, fontSize=9,
+                                   textColor=colors.HexColor("#555555"), leading=13)
+    warn_style   = ParagraphStyle("warn", fontName=font_name, fontSize=9,
+                                   textColor=colors.HexColor("#cc0000"),
+                                   leading=13, spaceAfter=6)
+
+    story = []
+
+    # Sarlavha
+    story.append(Paragraph("🧠 Radiology AI — Tahlil Natijasi", header_style))
+    story.append(HRFlowable(width="100%", thickness=1.5,
+                             color=colors.HexColor("#1a3a5c"), spaceAfter=6))
+
+    # Bemor ma'lumotlari
+    name     = user_data.get("full_name", "—")
+    age      = user_data.get("age", "—")
+    phone    = user_data.get("phone", "—")
+    username = f"@{user_data['username']}" if user_data.get("username") else "—"
+    now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M") + " UTC"
+
+    meta_lines = [
+        f"👤  Bemor: {name}",
+        f"🎂  Yosh: {age}",
+        f"📱  Telefon: {phone}",
+        f"🔹  Username: {username}",
+        f"🕐  Tahlil vaqti: {now}",
+    ]
+    for ml in meta_lines:
+        story.append(Paragraph(ml, meta_style))
+
+    story.append(Spacer(1, 6))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                             color=colors.HexColor("#cccccc"), spaceAfter=8))
+
+    # Natija matni — har qatorni qayta ishlash
+    import re
+    # Markdown tozalash: *, _, `
+    clean = re.sub(r"[*_`]", "", result_text)
+
+    for line in clean.split("\n"):
+        line = line.strip()
+        if not line:
+            story.append(Spacer(1, 4))
+            continue
+        if line.startswith("━"):
+            story.append(HRFlowable(width="100%", thickness=0.5,
+                                     color=colors.HexColor("#1a3a5c"), spaceAfter=4))
+            continue
+        # Sarlavha bo'limlari (emoji bilan boshlanadigan katta qatorlar)
+        if any(line.startswith(e) for e in ["🖼","🔬","📋","⚠️","🩺","💊","📄","⚕️"]):
+            story.append(Paragraph(line, header_style))
+        elif line.startswith("•") or line.startswith("-"):
+            story.append(Paragraph("  " + line, normal_style))
+        elif "Muhim" in line or "Важно" in line or "Important" in line or "eslatma" in line.lower():
+            story.append(Paragraph(line, warn_style))
+        else:
+            story.append(Paragraph(line, normal_style))
+
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                             color=colors.HexColor("#cccccc"), spaceAfter=4))
+    story.append(Paragraph(
+        "⚕️ Bu Radiology AI tomonidan yaratilgan avtomatik tahlil bo'lib, "
+        "rasmiy tibbiy tashxis emas. Aniq tashxis uchun mutaxassis shifokorga murojaat qiling.",
+        warn_style
+    ))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+async def send_result_to_user(bot, user_id, status_msg_id, result, lang, user_data):
+    """
+    Natijani foydalanuvchiga yuboradi:
+    - Qisqa (<=3800 belgi) bo'lsa: oddiy matn xabari
+    - Uzun bo'lsa: PDF fayl + qisqa xabar
+    """
+    TELEGRAM_LIMIT = 3800
+
+    # Matnni o'chirish (status xabari)
+    try:
+        await bot.delete_message(chat_id=user_id, message_id=status_msg_id)
+    except:
+        pass
+
+    if len(result) <= TELEGRAM_LIMIT:
+        # Qisqa natija — to'g'ridan-to'g'ri yuborish
+        await bot.send_message(chat_id=user_id, text=result, parse_mode="Markdown")
+    else:
+        # Uzun natija — PDF + qisqa xulosa
+        short_labels = {
+            "uz": "📄 *Tahlil natijasi PDF faylda*\n\nQuyida to'liq xulosa saqlangi:",
+            "ru": "📄 *Результат анализа в PDF файле*\n\nПолное заключение ниже:",
+            "en": "📄 *Analysis result in PDF file*\n\nFull report below:",
+        }
+        try:
+            pdf_bytes = result_to_pdf(result, user_data, lang)
+            import io
+            pdf_file = io.BytesIO(pdf_bytes)
+            pdf_file.name = "radiology_ai_result.pdf"
+            await bot.send_message(chat_id=user_id,
+                                   text=short_labels.get(lang, short_labels["uz"]),
+                                   parse_mode="Markdown")
+            await bot.send_document(chat_id=user_id, document=pdf_file,
+                                    filename="Radiology_AI_Tahlil.pdf",
+                                    caption="🧠 Radiology AI — To'liq tahlil natijasi")
+        except Exception as e:
+            logger.error(f"PDF yaratishda xato: {e}")
+            # Fallback: matnni bo'lib yuborish
+            chunks = [result[i:i+3800] for i in range(0, len(result), 3800)]
+            for i, chunk in enumerate(chunks):
+                prefix = f"📄 *Natija ({i+1}/{len(chunks)})*\n\n" if len(chunks) > 1 else ""
+                await bot.send_message(chat_id=user_id,
+                                       text=prefix + chunk, parse_mode="Markdown")
+
 # ─── QUEUE WORKER ─────────────────────────────────────────────────────────────
 async def process_queue_worker(app):
     while True:
@@ -1210,10 +1365,14 @@ async def process_queue_worker(app):
             # Limit hisobiga qo'shish
             db.increment_today(user_id)
 
-            # Foydalanuvchiga natija
-            await app.bot.edit_message_text(
-                chat_id=user_id, message_id=status_msg.message_id,
-                text=result, parse_mode="Markdown"
+            # ── NATIJANI YUBORISH (PDF yoki matn) ───────────────────────────
+            await send_result_to_user(
+                bot=app.bot,
+                user_id=user_id,
+                status_msg_id=status_msg.message_id,
+                result=result,
+                lang=lang,
+                user_data=user_data,
             )
 
             # Tarixga saqlash
