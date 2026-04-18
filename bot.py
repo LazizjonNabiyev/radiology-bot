@@ -69,7 +69,7 @@ def t(lang, key, **kw):
             "menu_profile":  "👤 Profilim",
             "menu_contact":  "📞 Aloqa",
             # Tahlil
-            "send_file":     "📸 *Tahlil uchun fayl yuboring:*\n\n• MRT, MSKT, Rentgen rasmi\n• PDF yoki rasm skrenshot\n\n📌 Aniq va sifatli rasm yuborish tavsiya etiladi.",
+            "send_file":     "📸 *Tahlil uchun fayl yuboring:*\n\n• MRT, MSKT, Rentgen rasmi\n• PDF yoki rasm hujjat\n\n📌 Aniq va sifatli rasm yuborish tavsiya etiladi.",
             "in_queue":      "⏳ *Navbatga qo'shildi!*\n🔢 Navbatingiz: *#{pos}*\n\nBirozdan keyin natija yuboriladi ⏱",
             "processing":    "🔬 *Tahlil qilinmoqda...*\n\nIltimos kuting, bu bir necha soniya oladi.",
             "error":         "❌ Xatolik yuz berdi. Qayta urinib ko'ring.",
@@ -155,7 +155,7 @@ def t(lang, key, **kw):
             "menu_history":  "📋 История",
             "menu_profile":  "👤 Мой профиль",
             "menu_contact":  "📞 Контакт",
-            "send_file":     "📸 *Отправьте файл для анализа:*\n\n• Снимок МРТ, КТ, Рентген\n• PDF или Изображение\n\n📌 Рекомендуется отправлять чёткие снимки.",
+            "send_file":     "📸 *Отправьте файл для анализа:*\n\n• Снимок МРТ, КТ, Рентген\n• PDF или Изображение документ\n\n📌 Рекомендуется отправлять чёткие снимки.",
             "in_queue":      "⏳ *Добавлено в очередь!*\n🔢 Ваш номер: *#{pos}*\n\nРезультат придёт скоро ⏱",
             "processing":    "🔬 *Анализируется...*\n\nПожалуйста, подождите.",
             "error":         "❌ Произошла ошибка. Попробуйте снова.",
@@ -235,7 +235,7 @@ def t(lang, key, **kw):
             "menu_history":  "📋 History",
             "menu_profile":  "👤 My Profile",
             "menu_contact":  "📞 Contact",
-            "send_file":     "📸 *Send file for analysis:*\n\n• MRI, CT, X-Ray image\n• PDF or screenshot or picture\n\n📌 Clear, high-quality images recommended.",
+            "send_file":     "📸 *Send file for analysis:*\n\n• MRI, CT, X-Ray image\n• PDF or Picture document\n\n📌 Clear, high-quality images recommended.",
             "in_queue":      "⏳ *Added to queue!*\n🔢 Your position: *#{pos}*\n\nResult coming soon ⏱",
             "processing":    "🔬 *Analyzing...*\n\nPlease wait a moment.",
             "error":         "❌ An error occurred. Please try again.",
@@ -1159,7 +1159,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                or name.lower().endswith((".pdf",".doc",".docx")))
     if not allowed:
         await update.message.reply_text(
-            "⚠️ Faqat PDF yoki Word (DOC/DOCX) hujjatlar.\n📸 Rasm uchun galereya orqali yuboring.")
+            "⚠️ Faqat PDF yoki Rasm (DOC/DOCX) hujjatlar.\n📸 Rasm uchun galereya orqali yuboring.")
         return
     pos = await queue.add_to_queue(
         user_id=update.message.from_user.id, message=update.message,
@@ -1183,6 +1183,60 @@ async def admin_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Premium berildi: {target_id}\nMuddati: {until}")
     except Exception as e:
         await update.message.reply_text(f"❌ Xato: /premium USER_ID 1m\n{e}")
+
+
+async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Faqat admin ko'ra oladi: /stats"""
+    if update.message.from_user.id != ADMIN_ID:
+        return
+
+    s = db.get_stats()
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+
+    msg = (
+        f"📊 *Radiology AI — Statistika*\n"
+        f"🕐 {now} UTC\n"
+        f"{'─'*30}\n\n"
+        f"👥 *Foydalanuvchilar:*\n"
+        f"  • Jami: *{s['total_users']}* ta\n"
+        f"  • 💎 Premium: *{s['premium_users']}* ta\n"
+        f"  • 🆓 Bepul: *{s['free_users']}* ta\n\n"
+        f"📈 *Bugun:*\n"
+        f"  • Yangi ro'yxat: *{s['today_registered']}* ta\n"
+        f"  • Faol (tahlil qilgan): *{s['today_active']}* ta\n\n"
+        f"🔬 *Tahlillar:*\n"
+        f"  • Jami bajarilgan: *{s['total_analyses']}* ta\n\n"
+        f"🌐 *Tillar:*\n"
+        f"  • 🇺🇿 O'zbek: *{s['langs']['uz']}* ta\n"
+        f"  • 🇷🇺 Rus: *{s['langs']['ru']}* ta\n"
+        f"  • 🇬🇧 Ingliz: *{s['langs']['en']}* ta"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """So'nggi 10 ta foydalanuvchi: /users"""
+    if update.message.from_user.id != ADMIN_ID:
+        return
+
+    import json
+    data = json.load(open("users.json")) if __import__("os").path.exists("users.json") else {}
+    users_list = sorted(data.values(), key=lambda x: x.get("registered_at",""), reverse=True)[:10]
+
+    if not users_list:
+        await update.message.reply_text("Hozircha foydalanuvchi yo'q.")
+        return
+
+    msg = "👥 *So'nggi 10 ta foydalanuvchi:*\n\n"
+    for i, u in enumerate(users_list, 1):
+        prem = "💎" if u.get("premium_until","") >= date.today().isoformat() else "🆓"
+        uname = f"@{u['username']}" if u.get("username") else "—"
+        msg += (
+            f"*{i}.* {u.get('full_name','—')} {prem}\n"
+            f"   📱 {u.get('phone','—')} | {uname}\n"
+            f"   🔬 {u.get('analysis_count',0)} ta tahlil\n\n"
+        )
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 
@@ -1539,6 +1593,8 @@ def main():
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("premium", admin_premium))
+    app.add_handler(CommandHandler("stats", admin_stats))
+    app.add_handler(CommandHandler("users", admin_users))
     app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="check_sub"))
     app.add_handler(CallbackQueryHandler(payment_callback, pattern="^(prem:|manual:|show_premium)"))
     # filters.ChatType.PRIVATE — faqat shaxsiy xabarlar, kanal/guruh xabarlari e'tiborga olinmaydi
