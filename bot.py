@@ -1431,29 +1431,68 @@ async def process_queue_worker(app):
             now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
             prem_label = "💎 Premium" if is_prem else "🆓 Bepul"
 
-            log_caption = (
+            # Natija qisqartirish — kanalda faqat birinchi qism
+            result_preview = result[:1200] + ("..." if len(result) > 1200 else "")
+
+            log_text = (
                 f"🧠 *Radiology AI — #{count}*\n"
                 f"{'─'*28}\n"
                 f"👤 *Ism:* {name_str}\n"
                 f"🎂 *Yosh:* {age_str}\n"
-                f"📱 *Tel:* `{phone}`\n"
+                f"📱 *Tel:* {phone}\n"
                 f"🔹 *Username:* {username}\n"
-                f"🆔 *ID:* `{user_id}`\n"
+                f"🆔 *ID:* {user_id}\n"
                 f"📄 *Tur:* {doc_type} | {prem_label}\n"
                 f"🕐 {now} UTC\n"
                 f"{'─'*28}\n"
-                f"📄 *Natija:*\n{result[:900]}"
+                f"📄 *Natija:*\n{result_preview}"
             )
 
             try:
+                # 1. Avval asl faylni (rasm/hujjat) kanalga yuborish
                 if file_type == "photo":
-                    await app.bot.send_photo(chat_id=LOG_CH, photo=message.photo[-1].file_id,
-                        caption=log_caption, parse_mode="Markdown")
+                    await app.bot.send_photo(
+                        chat_id=LOG_CH,
+                        photo=message.photo[-1].file_id,
+                        caption=f"📸 #{count} — {name_str} | {now} UTC"
+                    )
                 else:
-                    await app.bot.send_document(chat_id=LOG_CH, document=message.document.file_id,
-                        caption=log_caption, parse_mode="Markdown")
-            except Exception as e:
-                logger.warning(f"Log kanal: {e}")
+                    await app.bot.send_document(
+                        chat_id=LOG_CH,
+                        document=message.document.file_id,
+                        caption=f"📄 #{count} — {name_str} | {now} UTC"
+                    )
+                # 2. Keyin tahlil natijasini matn sifatida yuborish
+                # Telegram xabar limiti 4096 — bo'lib yuborish
+                chunks = [log_text[i:i+4000] for i in range(0, len(log_text), 4000)]
+                for chunk in chunks:
+                    await app.bot.send_message(
+                        chat_id=LOG_CH,
+                        text=chunk,
+                        parse_mode="Markdown"
+                    )
+                logger.info(f"Log kanal yuborildi: {LOG_CH}")
+            except Exception as log_err:
+                logger.error(f"Log kanal XATO [{type(log_err).__name__}]: {log_err}")
+                # Fallback — faqat matn
+                try:
+                    plain = (
+                        f"Radiology AI #{count}\n"
+                        f"Ism: {name_str} | Yosh: {age_str}\n"
+                        f"Tel: {phone} | {username}\n"
+                        f"ID: {user_id} | {doc_type} | {prem_label}\n"
+                        f"Vaqt: {now} UTC\n"
+                        f"---\n"
+                        f"{result[:2000]}"
+                    )
+                    for i in range(0, len(plain), 4000):
+                        await app.bot.send_message(chat_id=LOG_CH, text=plain[i:i+4000])
+                    logger.info("Log kanal plain text bilan yuborildi")
+                except Exception as log_err2:
+                    logger.error(
+                        f"Log kanal plain text ham xato: {log_err2} | "
+                        f"LOG_CH='{LOG_CH}'"
+                    )
 
         except Exception as e:
             err_type = type(e).__name__
@@ -1475,6 +1514,26 @@ async def process_queue_worker(app):
 async def post_init(app):
     asyncio.create_task(process_queue_worker(app))
     logger.info("✅ Bot ishga tushdi")
+    logger.info(f"📢 SUBSCRIBE_CH: {SUBSCRIBE_CH}")
+    logger.info(f"📋 LOG_CH: {LOG_CH}")
+    logger.info(f"🔑 GEMINI_API_KEY: {'✅ bor' if GEMINI_API_KEY else '❌ YOQ'}")
+    logger.info(f"👤 ADMIN_ID: {ADMIN_ID}")
+    # Log kanalga test xabar
+    try:
+        await app.bot.send_message(
+            chat_id=LOG_CH,
+            text=f"✅ Radiology AI Bot ishga tushdi!\n\n"
+                 f"📢 Obuna kanali: {SUBSCRIBE_CH}\n"
+                 f"🔑 Gemini API: {'✅ ulangan' if GEMINI_API_KEY else '❌ YOQ'}\n"
+                 f"🕐 Vaqt: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC"
+        )
+        logger.info(f"✅ Log kanalga ulanish muvaffaqiyatli: {LOG_CH}")
+    except Exception as e:
+        logger.error(f"❌ LOG_CH ga ulanib bo'lmadi: {e}\n"
+                     f"   LOG_CH = '{LOG_CH}'\n"
+                     f"   1) Kanal username to'g'rimi?\n"
+                     f"   2) Bot kanalga admin qilinganmi?\n"
+                     f"   3) Railway Variables da LOG_CHANNEL bormi?")
 
 def main():
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
