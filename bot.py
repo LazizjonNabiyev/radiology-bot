@@ -284,9 +284,9 @@ def t(lang, key, **kw):
             "contact_info":  (
                 "📞 *Contact*\n\n"
                 "❓ Questions or issues:\n\n"
-                "👨‍💻 Admin: @RadiologyAIAdmin\n"
+                "👨‍💻 Admin: @Technologeee\n"
                 "📢 Channel: {ch}\n"
-                "📧 Email: info@radiologyai.uz\n\n"
+                "📧 Email: lazizaxrorovich@gmail.com\n\n"
                 "⏰ Working hours: 09:00 — 22:00"
             ),
             "sub_btn":       "📢 Subscribe",
@@ -327,12 +327,13 @@ async def send_main_menu(bot_or_msg, user_id, lang, user_data, send_fn):
 
 # ─── GEMINI: RASM ─────────────────────────────────────────────────────────────
 async def analyze_image_gemini(image_bytes, lang, age="", is_premium=False):
-    age_note_uz = f"Bemor yoshi: {age} yosh." if age and age != "—" else "Bemor yoshi ko'rsatilmagan."
-    age_note_ru = f"Возраст пациента: {age} лет." if age and age != "—" else "Возраст пациента не указан."
-    age_note_en = f"Patient age: {age} years old." if age and age != "—" else "Patient age not specified."
+    # Yosh: hujjatdagi yosh ustunlik qiladi — profil yoshi faqat zaxira
+    age_hint_uz = f"Profildagi yosh: {age}. Agar hujjatda boshqa yosh bo'lsa, HUJJATDAGIsini ishlat, farqni tilga olma." if age and age != "—" else ""
+    age_hint_ru = f"Возраст в профиле: {age}. Если в документе другой возраст — используй ДОКУМЕНТАЛЬНЫЙ, не упоминай расхождение." if age and age != "—" else ""
+    age_hint_en = f"Profile age: {age}. If document shows different age — use the DOCUMENT age, do not mention the discrepancy." if age and age != "—" else ""
 
     prompts = {
-        "uz": f"""Sen 25 yillik klinik tajribaga ega bo'lgan professor darajasidagi radiolog shifokorsan. {age_note_uz}
+        "uz": f"""Sen 25 yillik klinik tajribaga ega bo'lgan professor darajasidagi radiolog shifokorsan. {age_hint_uz}
 
 Quyidagi tibbiy tasvir senga yuborildi. Uni eng yuqori professional darajada tahlil qil.
 
@@ -342,6 +343,7 @@ MUHIM QOIDALAR:
 - Ko'rsatkichlarni normallar bilan taqqoslab ko'rsat
 - Foydalanuvchi bu xulosani o'qib, o'z ahvoli haqida TO'LIQ tushuncha olishi kerak
 - Tibbiy terminlarni oddiy so'zlar bilan izohlat
+- Yosh nomuvofiqligini HECH QACHON tilga olma — faqat tibbiy tahlil yoz
 
 Quyidagi formatda to'liq va batafsil javob yoz:
 
@@ -404,7 +406,7 @@ Har bir tashxisni klinik belgilar bilan asoslang]
 ━━━━━━━━━━━━━━━━━━━━━━━━
 ⚕️ _Muhim: Bu Radiology AI sun'iy intellekti tomonidan tayyorlangan tahlil bo'lib, rasmiy tibbiy tashxis emas. Aniq tashxis, davo rejasi va dori buyurish uchun albatta litsenziyali shifokorga murojaat qiling._""",
 
-        "ru": f"""Вы — профессор-радиолог с 25-летним клиническим опытом. {age_note_ru}
+        "ru": f"""Вы — профессор-радиолог с 25-летним клиническим опытом. {age_hint_ru}
 
 Вам был отправлен медицинский снимок. Проведите анализ на высшем профессиональном уровне.
 
@@ -476,7 +478,7 @@ Har bir tashxisni klinik belgilar bilan asoslang]
 ━━━━━━━━━━━━━━━━━━━━━━━━
 ⚕️ _Важно: Это анализ, подготовленный искусственным интеллектом Radiology AI, и не является официальным медицинским заключением. Для точного диагноза, плана лечения и назначения препаратов обязательно обратитесь к лицензированному врачу._""",
 
-        "en": f"""You are a professor-level radiologist with 25 years of clinical experience. {age_note_en}
+        "en": f"""You are a professor-level radiologist with 25 years of clinical experience. {age_hint_en}
 
 A medical image has been sent to you. Analyze it at the highest professional level.
 
@@ -575,21 +577,23 @@ Each diagnosis supported by clinical findings]
 
 # ─── GEMINI: MATN (PDF/DOCX) ──────────────────────────────────────────────────
 async def analyze_text_gemini(doc_text, lang, age="", is_premium=False):
-    age_note_uz = f"Bemor yoshi: {age} yosh." if age and age != "—" else "Bemor yoshi ko'rsatilmagan."
-    age_note_ru = f"Возраст пациента: {age} лет." if age and age != "—" else "Возраст пациента не указан."
-    age_note_en = f"Patient age: {age} years old." if age and age != "—" else "Patient age not specified."
+    # Yosh: hujjatdagi yosh ustunlik qiladi
+    age_hint_uz = f"Profildagi yosh: {age}. Agar hujjatda boshqa yosh bo'lsa, HUJJATDAGIsini ishlat, farqni tilga olma." if age and age != "—" else ""
+    age_hint_ru = f"Возраст в профиле: {age}. Если в документе другой возраст — используй ДОКУМЕНТАЛЬНЫЙ, не упоминай расхождение." if age and age != "—" else ""
+    age_hint_en = f"Profile age: {age}. If document shows different age — use the DOCUMENT age, do not mention the discrepancy." if age and age != "—" else ""
 
     prompts = {
-        "uz": f"""Sen professor darajasidagi klinik tibbiyot mutaxassisi va radiologsan. {age_note_uz}
+        "uz": f"""Sen professor darajasidagi klinik tibbiyot mutaxassisi va radiologsan. {age_hint_uz}
 
 Senga quyidagi tibbiy hujjat taqdim etildi. Uni eng yuqori professional darajada tahlil qil.
 
 MUHIM QOIDALAR:
-- Hujjatdagi BARCHA ma'lumotlarni ko'rib chiq
+- Hujjatdagi BARCHA ma'lumotlarni ko'rib chiq va hech narsani o'tkazib yubora
 - Har bir bo'limda KAM DEGANDA 3-5 ta aniq gap yoz
 - Ko'rsatkichlarni normal qiymatlar bilan taqqosla
-- Foydalanuvchi TO'LIQ tushuncha olishi kerak
+- Foydalanuvchi TO'LIQ tushuncha olishi kerak — hujjatning har bir qatori muhim
 - Tibbiy terminlarni oddiy tilda izohlat
+- Yosh nomuvofiqligini HECH QACHON tilga olma — faqat tibbiy tahlil yoz
 
 HUJJAT MATNI:
 ━━━━━━━━━━━━━━━━━━━━━━━━
@@ -644,7 +648,7 @@ Quyidagi formatda to'liq javob yoz:
 ━━━━━━━━━━━━━━━━━━━━━━━━
 ⚕️ _Muhim: Bu Radiology AI sun'iy intellekti tomonidan tayyorlangan tahlil bo'lib, rasmiy tibbiy tashxis emas. Aniq tashxis, davo rejasi va dori buyurish uchun albatta litsenziyali shifokorga murojaat qiling._""",
 
-        "ru": f"""Вы — профессор-клиницист и радиолог высшей квалификации. {age_note_ru}
+        "ru": f"""Вы — профессор-клиницист и радиолог высшей квалификации. {age_hint_ru}
 
 Вам предоставлен медицинский документ для профессионального анализа.
 
@@ -708,7 +712,7 @@ Quyidagi formatda to'liq javob yoz:
 ━━━━━━━━━━━━━━━━━━━━━━━━
 ⚕️ _Важно: Это анализ, подготовленный искусственным интеллектом Radiology AI, и не является официальным медицинским заключением. Для точного диагноза, плана лечения и назначения препаратов обязательно обратитесь к лицензированному врачу._""",
 
-        "en": f"""You are a professor-level clinician and radiologist. {age_note_en}
+        "en": f"""You are a professor-level clinician and radiologist. {age_hint_en}
 
 A medical document has been provided for your professional analysis.
 
