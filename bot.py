@@ -584,7 +584,12 @@ Each diagnosis supported by clinical findings]
         except Exception as e:
             logger.error(f"Gemini image parse: {e}")
             return None
-    logger.error(f"Gemini image API: {r.status_code} {r.text[:300]}")
+    if r.status_code == 429:
+        logger.error("Gemini RATE LIMIT (429) — kunlik limit tugagan yoki minutiga ko'p so'rov")
+    elif r.status_code == 400:
+        logger.error(f"Gemini BAD REQUEST (400): {r.text[:500]}")
+    else:
+        logger.error(f"Gemini image API: {r.status_code} {r.text[:300]}")
     return None
 
 # ─── GEMINI: MATN (PDF/DOCX) ──────────────────────────────────────────────────
@@ -810,7 +815,12 @@ Write a full response in this format:
         except Exception as e:
             logger.error(f"Gemini text parse: {e}")
             return None
-    logger.error(f"Gemini text API: {r.status_code} {r.text[:300]}")
+    if r.status_code == 429:
+        logger.error("Gemini RATE LIMIT (429) — kunlik limit tugagan yoki minutiga ko'p so'rov")
+    elif r.status_code == 400:
+        logger.error(f"Gemini BAD REQUEST (400): {r.text[:500]}")
+    else:
+        logger.error(f"Gemini text API: {r.status_code} {r.text[:300]}")
     return None
 
 # ─── PDF / DOCX MATN ──────────────────────────────────────────────────────────
@@ -1175,7 +1185,8 @@ async def admin_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Xato: /premium USER_ID 1m\n{e}")
 
 
-# ─── PDF NATIJA YARATISH ──────────────────────────────────────────────────────
+
+# ─── PDF YARATISH ─────────────────────────────────────────────────────────────
 def result_to_pdf(result_text: str, user_data: dict, lang: str) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
@@ -1187,153 +1198,149 @@ def result_to_pdf(result_text: str, user_data: dict, lang: str) -> bytes:
     import io, os, re
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                            leftMargin=2*cm, rightMargin=2*cm,
-                            topMargin=2*cm, bottomMargin=2*cm)
+    doc_pdf = SimpleDocTemplate(buf, pagesize=A4,
+                                leftMargin=2*cm, rightMargin=2*cm,
+                                topMargin=2*cm, bottomMargin=2*cm)
 
-    # Unicode shrift — o'zbek, rus, ingliz harflari uchun
     font_name = "Helvetica"
     font_bold = "Helvetica-Bold"
-    font_paths = [
+    for reg_fp, bold_fp in [
         ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
          "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
         ("/usr/share/fonts/dejavu/DejaVuSans.ttf",
          "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"),
         ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
          "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
-    ]
-    for reg_fp, bold_fp in font_paths:
+    ]:
         if os.path.exists(reg_fp):
             try:
-                pdfmetrics.registerFont(TTFont("UniFont", reg_fp))
-                font_name = "UniFont"
+                pdfmetrics.registerFont(TTFont("UniF", reg_fp))
+                font_name = "UniF"
                 if os.path.exists(bold_fp):
-                    pdfmetrics.registerFont(TTFont("UniFont-Bold", bold_fp))
-                    font_bold = "UniFont-Bold"
-            except:
+                    pdfmetrics.registerFont(TTFont("UniF-Bold", bold_fp))
+                    font_bold = "UniF-Bold"
+            except Exception:
                 pass
             break
 
-    # Stillar
-    title_style  = ParagraphStyle("title", fontName=font_bold, fontSize=16,
-                                   textColor=colors.HexColor("#1a3a5c"),
-                                   spaceAfter=4, leading=22)
-    section_style= ParagraphStyle("sec", fontName=font_bold, fontSize=11,
-                                   textColor=colors.HexColor("#1a3a5c"),
-                                   spaceAfter=2, spaceBefore=10, leading=16)
-    normal_style = ParagraphStyle("nrm", fontName=font_name, fontSize=10,
-                                   leading=16, spaceAfter=2)
-    bullet_style = ParagraphStyle("blt", fontName=font_name, fontSize=10,
-                                   leading=15, spaceAfter=1, leftIndent=12)
-    meta_style   = ParagraphStyle("meta", fontName=font_name, fontSize=9,
-                                   textColor=colors.HexColor("#444444"), leading=14)
-    warn_style   = ParagraphStyle("wrn", fontName=font_name, fontSize=9,
-                                   textColor=colors.HexColor("#cc0000"),
-                                   leading=13, spaceAfter=4)
+    title_s  = ParagraphStyle("t",  fontName=font_bold, fontSize=15,
+                               textColor=colors.HexColor("#1a3a5c"), spaceAfter=3, leading=20)
+    sec_s    = ParagraphStyle("s",  fontName=font_bold, fontSize=11,
+                               textColor=colors.HexColor("#1a3a5c"), spaceBefore=10, spaceAfter=2, leading=16)
+    norm_s   = ParagraphStyle("n",  fontName=font_name, fontSize=10, leading=15, spaceAfter=2)
+    blt_s    = ParagraphStyle("b",  fontName=font_name, fontSize=10, leading=14, leftIndent=12, spaceAfter=1)
+    meta_s   = ParagraphStyle("m",  fontName=font_name, fontSize=9,
+                               textColor=colors.HexColor("#444444"), leading=13)
+    warn_s   = ParagraphStyle("w",  fontName=font_name, fontSize=9,
+                               textColor=colors.HexColor("#bb0000"), leading=13)
 
-    def safe(text):
-        """XML special chars ni tozalash"""
-        return (text.replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                    .replace('"', "&quot;"))
+    def sf(txt):
+        return (str(txt).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;"))
 
     story = []
-
-    # ── SARLAVHA ──
-    story.append(Paragraph("🧠 Radiology AI", title_style))
-    story.append(Paragraph("Tibbiy tahlil natijasi", meta_style))
+    story.append(Paragraph("Radiology AI — Tahlil Natijasi", title_s))
     story.append(HRFlowable(width="100%", thickness=2,
-                             color=colors.HexColor("#1a3a5c"), spaceAfter=8))
+                             color=colors.HexColor("#1a3a5c"), spaceAfter=7))
 
-    # ── BEMOR MA'LUMOTLARI ──
-    name     = user_data.get("full_name", "—")
-    age      = user_data.get("age", "—")
-    phone    = user_data.get("phone", "—")
-    username = f"@{user_data.get('username', '—')}" if user_data.get("username") else "—"
-    now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M") + " UTC"
+    name     = user_data.get("full_name","—")
+    age_val  = user_data.get("age","—")
+    phone    = user_data.get("phone","—")
+    uname    = "@"+user_data["username"] if user_data.get("username") else "—"
+    now      = datetime.utcnow().strftime("%Y-%m-%d %H:%M")+" UTC"
 
-    meta_rows = [
-        ("Bemor", name), ("Yosh", str(age)),
-        ("Telefon", phone), ("Username", username), ("Tahlil vaqti", now),
-    ]
-    for label, val in meta_rows:
-        story.append(Paragraph(f"<b>{safe(label)}:</b>  {safe(val)}", meta_style))
+    for lbl, val in [("Bemor", name),("Yosh", age_val),
+                     ("Telefon", phone),("Username", uname),("Vaqt", now)]:
+        story.append(Paragraph(f"<b>{sf(lbl)}:</b>  {sf(val)}", meta_s))
 
     story.append(Spacer(1, 8))
-    story.append(HRFlowable(width="100%", thickness=0.8,
-                             color=colors.HexColor("#bbbbbb"), spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=0.7,
+                             color=colors.HexColor("#cccccc"), spaceAfter=10))
 
-    # ── NATIJA MATNI — BARCHA QATORLAR ──
-    # Markdown * _ ` ni tozalash
-    clean = re.sub(r"\*\*(.+?)\*\*", r"", result_text)
-    clean = re.sub(r"\*(.+?)\*", r"", clean)
-    clean = re.sub(r"_(.+?)_", r"", clean)
-    clean = re.sub(r"`(.+?)`", r"", clean)
+    # Markdown tozalash
+    clean = re.sub(r"[*]{1,2}(.+?)[*]{1,2}", r"\1", result_text)
+    clean = re.sub(r"_(.+?)_", r"\1", clean)
+    clean = clean.replace("`","")
 
-    lines = clean.split("\n")
-    i = 0
-    while i < len(lines):
-        line = lines[i].rstrip()
+    SEC_EMOJIS = ("🖼","🔬","📋","⚠️","🩺","💊","📄","⚕️","📊","🔎","💉","🩻","🏥")
 
-        # Bo'sh qator
-        if not line.strip():
+    for line in clean.split("\n"):
+        line = line.rstrip()
+        s = line.strip()
+        if not s:
             story.append(Spacer(1, 4))
-            i += 1
-            continue
-
-        # Ajratuvchi chiziq (━━━)
-        if line.strip().startswith("━") or line.strip().startswith("─"):
+        elif s.startswith("━") or s.startswith("─"):
             story.append(HRFlowable(width="100%", thickness=0.5,
                                      color=colors.HexColor("#1a3a5c"), spaceAfter=2))
-            i += 1
-            continue
+        elif s.startswith("⚕️"):
+            story.append(Paragraph(sf(s), warn_s))
+        elif any(s.startswith(e) for e in SEC_EMOJIS):
+            story.append(Paragraph(sf(s), sec_s))
+        elif s.startswith(("• ","- ","– ","* ","· ")):
+            story.append(Paragraph("• "+sf(s[2:].strip()), blt_s))
+        elif re.match(r"^\d+\.", s):
+            story.append(Paragraph(sf(s), blt_s))
+        else:
+            story.append(Paragraph(sf(s), norm_s))
 
-        # Bo'lim sarlavhalari (emoji bilan)
-        section_emojis = ("🖼", "🔬", "📋", "⚠️", "🩺", "💊", "📄", "⚕️",
-                          "🖼️", "🏥", "📊", "🔎", "💉", "🩻")
-        if any(line.strip().startswith(e) for e in section_emojis):
-            # ⚕️ eslatma — qizil
-            if line.strip().startswith("⚕️"):
-                story.append(Paragraph(safe(line.strip()), warn_style))
-            else:
-                story.append(Paragraph(safe(line.strip()), section_style))
-            i += 1
-            continue
-
-        # Bullet point
-        stripped = line.strip()
-        if stripped.startswith(("• ", "- ", "– ", "* ", "· ")):
-            text_part = stripped[2:].strip()
-            story.append(Paragraph("• " + safe(text_part), bullet_style))
-            i += 1
-            continue
-
-        # Raqamli ro'yxat (1. 2. ...)
-        if re.match(r"^\d+\.", stripped):
-            story.append(Paragraph(safe(stripped), bullet_style))
-            i += 1
-            continue
-
-        # Oddiy matn
-        story.append(Paragraph(safe(stripped), normal_style))
-        i += 1
-
-    # ── OXIRGI ESLATMA ──
-    story.append(Spacer(1, 14))
-    story.append(HRFlowable(width="100%", thickness=0.8,
-                             color=colors.HexColor("#bbbbbb"), spaceAfter=6))
+    story.append(Spacer(1, 12))
+    story.append(HRFlowable(width="100%", thickness=0.7,
+                             color=colors.HexColor("#cccccc"), spaceAfter=5))
     story.append(Paragraph(
-        "⚕️ Muhim: Bu Radiology AI sun'iy intellekti tomonidan yaratilgan "
-        "avtomatik tahlil bo'lib, rasmiy tibbiy tashxis o'rnini bosa olmaydi. "
-        "Aniq tashxis, davo rejasi va dori buyurish uchun albatta "
-        "mutaxassis shifokorga murojaat qiling.",
-        warn_style
+        "Bu Radiology AI sun'iy intellekti tomonidan yaratilgan avtomatik tahlil. "
+        "Rasmiy tibbiy tashxis emas. Aniq tashxis uchun mutaxassis shifokorga murojaat qiling.",
+        warn_s
     ))
-
-    doc.build(story)
+    doc_pdf.build(story)
     return buf.getvalue()
 
+
+# ─── NATIJANI YUBORISH ────────────────────────────────────────────────────────
+async def send_result_to_user(bot, user_id, status_msg_id, result, lang, user_data):
+    """Har doim PDF yuboradi. Xato bo'lsa matnni bo'lib yuboradi."""
+    # Status xabarni o'chirish
+    try:
+        await bot.delete_message(chat_id=user_id, message_id=status_msg_id)
+    except Exception:
+        pass
+
+    captions = {
+        "uz": "Radiology AI — To'liq tahlil natijasi",
+        "ru": "Radiology AI — Полный результат анализа",
+        "en": "Radiology AI — Full Analysis Report",
+    }
+    notices = {
+        "uz": "✅ *Tahlil tayyor!*\n\n📄 To'liq natija PDF faylda — faylni oching.",
+        "ru": "✅ *Анализ готов!*\n\n📄 Полный результат в PDF файле — откройте файл.",
+        "en": "✅ *Analysis complete!*\n\n📄 Full result in PDF — open the file.",
+    }
+
+    try:
+        import io as _io
+        pdf_bytes = result_to_pdf(result, user_data, lang)
+        buf = _io.BytesIO(pdf_bytes)
+        buf.name = "Radiology_AI_Tahlil.pdf"
+        await bot.send_message(chat_id=user_id,
+                               text=notices.get(lang, notices["uz"]),
+                               parse_mode="Markdown")
+        await bot.send_document(chat_id=user_id,
+                                document=buf,
+                                filename="Radiology_AI_Tahlil.pdf",
+                                caption=captions.get(lang, captions["uz"]))
+        logger.info(f"PDF yuborildi: user={user_id} size={len(pdf_bytes)}")
+    except Exception as pdf_err:
+        logger.error(f"PDF xato [{type(pdf_err).__name__}]: {pdf_err}", exc_info=True)
+        # Fallback: matnni bo'lib yuborish
+        chunks = [result[i:i+3500] for i in range(0, len(result), 3500)]
+        for i, chunk in enumerate(chunks):
+            try:
+                hdr = f"📄 *({i+1}/{len(chunks)}):*\n\n" if len(chunks)>1 else ""
+                await bot.send_message(chat_id=user_id,
+                                       text=hdr+chunk, parse_mode="Markdown")
+            except Exception:
+                try:
+                    await bot.send_message(chat_id=user_id, text=chunk)
+                except Exception:
+                    pass
 
 # ─── QUEUE WORKER ─────────────────────────────────────────────────────────────
 async def process_queue_worker(app):
@@ -1380,10 +1387,19 @@ async def process_queue_worker(app):
                     result = await analyze_text_gemini(text_content, lang, age, is_prem)
 
             if not GEMINI_API_KEY:
-                result = "⚠️ *GEMINI_API_KEY yo'q!*\nRailway Variables ga qo'shing:\nhttps://aistudio.google.com"
+                result = "⚠️ *GEMINI_API_KEY sozlanmagan!*\n\nRailway → Variables ga qo\'shing:\n`GEMINI_API_KEY = AIzaSy...`\n\nBepul olish: https://aistudio.google.com"
 
             if not result:
-                result = t(lang,"error")
+                # Gemini None qaytardi — sababi logda ko'rinadi
+                logger.error(f"Gemini natija qaytarmadi. GEMINI_API_KEY: {'bor' if GEMINI_API_KEY else 'YO\'Q'}, file_type: {file_type}")
+                result = (
+                    "❌ AI tahlil qila olmadi.\n\n"
+                    "Sabablari:\n"
+                    "• Rasm sifati past yoki tibbiy tasvir emas\n"
+                    "• Gemini API vaqtinchalik ishlamayapti\n"
+                    "• Fayl hajmi juda katta\n\n"
+                    "Iltimos, qayta urinib ko\'ring yoki sifatli rasm yuboring."
+                )
 
             # Limit hisobiga qo'shish
             db.increment_today(user_id)
@@ -1439,9 +1455,16 @@ async def process_queue_worker(app):
                 logger.warning(f"Log kanal: {e}")
 
         except Exception as e:
-            logger.error(f"Worker: {e}", exc_info=True)
+            err_type = type(e).__name__
+            logger.error(f"Worker xato [{err_type}]: {e}", exc_info=True)
             try:
-                await app.bot.send_message(chat_id=user_id, text=t(lang,"error"))
+                # Foydalanuvchiga xatoning sababini ko'rsat (debug uchun)
+                err_msg = (
+                    f"❌ Xatolik yuz berdi.\n\n"
+                    f"🔧 Sabab: {err_type}: {str(e)[:200]}\n\n"
+                    f"Qayta urinib ko'ring yoki admin ga murojaat qiling: @Technologeee"
+                )
+                await app.bot.send_message(chat_id=user_id, text=err_msg)
             except:
                 pass
         finally:
