@@ -204,9 +204,9 @@ def t(lang, key, **kw):
             "contact_info":  (
                 "📞 *Контакт*\n\n"
                 "❓ Вопросы и проблемы:\n\n"
-                "👨‍💻 Админ: @RadiologyAIAdmin\n"
+                "👨‍💻 Админ: @Technologeee\n"
                 "📢 Канал: {ch}\n"
-                "📧 Email: info@radiologyai.uz\n\n"
+                "📧 Email: lazizaxrorovich@gmail.com\n\n"
                 "⏰ Рабочее время: 09:00 — 22:00"
             ),
             "sub_btn":       "📢 Подписаться",
@@ -327,93 +327,238 @@ async def send_main_menu(bot_or_msg, user_id, lang, user_data, send_fn):
 
 # ─── GEMINI: RASM ─────────────────────────────────────────────────────────────
 async def analyze_image_gemini(image_bytes, lang, age="", is_premium=False):
-    depth = "CHUQUR va BATAFSIL" if is_premium else "asosiy"
-    age_note = f" Bemor yoshi: {age}." if age and age != "—" else ""
+    age_note_uz = f"Bemor yoshi: {age} yosh." if age and age != "—" else "Bemor yoshi ko'rsatilmagan."
+    age_note_ru = f"Возраст пациента: {age} лет." if age and age != "—" else "Возраст пациента не указан."
+    age_note_en = f"Patient age: {age} years old." if age and age != "—" else "Patient age not specified."
 
     prompts = {
-        "uz": f"""Siz 20 yillik tajribaga ega bo'lgan mutaxassis radiolog shifokor sifatida quyidagi tibbiy tasvirni {depth} tahlil qiling.{age_note}
+        "uz": f"""Sen 25 yillik klinik tajribaga ega bo'lgan professor darajasidagi radiolog shifokorsan. {age_note_uz}
 
-Javobingizni FAQAT quyidagi aniq formatda yozing — boshqa hech narsa qo'shmang:
+Quyidagi tibbiy tasvir senga yuborildi. Uni eng yuqori professional darajada tahlil qil.
 
-🖼 *Tasvir turi:*
-[MRT / MSKT / Rentgen / Ultratovush yoki boshqa; qaysi organ/a'zo/hudud aniq ko'rsating]
+MUHIM QOIDALAR:
+- Har bir bo'limda KAM DEGANDA 3-5 ta aniq gap yoz
+- Umumiy, bo'sh gaplar yozma — aniq klinik ma'lumot ber
+- Ko'rsatkichlarni normallar bilan taqqoslab ko'rsat
+- Foydalanuvchi bu xulosani o'qib, o'z ahvoli haqida TO'LIQ tushuncha olishi kerak
+- Tibbiy terminlarni oddiy so'zlar bilan izohlat
 
-🔬 *Ko'rinayotgan anatomik tuzilmalar:*
-[Suyaklar, bo'g'imlar, to'qimalar, organlar, tomirlar — ko'rinayotganlarni sanab chiqing]
+Quyidagi formatda to'liq va batafsil javob yoz:
 
-📋 *Topilmalar va tavsif:*
-[O'lchamlar, zichlik, chegaralar, simmetriya, normal va g'ayritabiiy o'zgarishlar — har birini alohida qatorga yozing]
+━━━━━━━━━━━━━━━━━━━━━━━━
+🖼 *TASVIR TURI VA HUDUD*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Tekshiruv usuli (MRT/MSKT/Rentgen/UZI), qaysi organ/hudud, qaysi proeksiya (old/yon/qiyshiq), kontrast moddasi ishlatilganmi, tasvirning sifati qanday]
 
-⚠️ *Patologik o'zgarishlar:*
-[Aniqlangan kasallik belgilari, shish, yallig'lanish, suyak o'zgarishlari, siqilish, siljish — yoki "Belirgin patologiya aniqlanmadi"]
+━━━━━━━━━━━━━━━━━━━━━━━━
+🔬 *ANATOMIK TUZILMALAR VA ULARNING HOLATI*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Ko'rinayotgan har bir tuzilmani alohida tavsiflang:
+• Suyaklar va bo'g'imlar — shakli, zichligi, yaxlitligi
+• Yumshoq to'qimalar — hajmi, tuzilishi, chegaralari
+• Organlar — o'lchami, konturi, ichki tuzilishi
+• Tomirlar va bo'shliqlar — o'lchami, to'lishi
+• Simmetriya va pozitsiya]
 
-🩺 *Taxminiy tashxis:*
-[Eng ehtimoliy holat yoki holatlar ro'yxati — ehtimollik foizi bilan]
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *BATAFSIL TOPILMALAR*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Har bir topilmani aniq tavsiflang:
+• O'lchamlar (sm, mm) va normal ko'rsatkichlar bilan taqqoslash
+• Zichlik yoki signal intensivligi (HU ko'rsatkichlari yoki MRT signali)
+• Chegaralar — aniq/noaniq, tekis/notekis
+• Shakl — yumaloq/oval/tartibsiz
+• Joylashuv — qaysi qismda, qaysi tuzilmaga nisbatan
+• O'zgarishlar xarakteri — o'tkir/surunkali belgilar]
 
-💊 *Tavsiyalar:*
-[Qaysi mutaxassisga murojaat qilish; qo'shimcha tekshiruvlar (qon tahlili, boshqa rasm turi); darhol choralar zarurmi]
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *PATOLOGIK O'ZGARISHLAR*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Aniqlangan barcha g'ayritabiiy holatlar:
+• Shishlar yoki o'smalar — o'lchami, chegarasi, xarakteri
+• Yallig'lanish belgilari — shish, infiltratsiya, ekssudat
+• Buzilishlar — yoriqlar, sinishlar, dislokatsiya
+• Tomirlar holati — torayish, kengayish, tromboz
+• Bosim belgilari — qo'shni organlarga ta'siri
+• "Belirgin patologiya aniqlanmadi" — faqat haqiqatan normal bo'lsa]
 
-⚕️ _Muhim eslatma: Bu sun'iy intellekt tomonidan avtomatik tahlil hisoblanadi va rasmiy tibbiy tashxis o'rnini bosa olmaydi. Aniq tashxis va davolash uchun albatta mutaxassis shifokorga murojaat qiling._""",
+━━━━━━━━━━━━━━━━━━━━━━━━
+🩺 *TAXMINIY TASHXIS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Eng ehtimoliy tashxislar ro'yxati ehtimollik darajasi bilan:
+• Birinchi o'rinda eng kuchli tashxis — sababi bilan
+• Ikkinchi o'rinda differensial tashxis — farqlari
+• Uchinchi ehtimol — qo'shimcha tekshiruvlar zarur bo'lganda
+Har bir tashxisni klinik belgilar bilan asoslang]
 
-        "ru": f"""Вы — опытный врач-радиолог с 20-летним стажем. Проведите {depth} анализ медицинского снимка.{age_note}
+━━━━━━━━━━━━━━━━━━━━━━━━
+💊 *KLINIK TAVSIYALAR*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Aniq va amaliy tavsiyalar:
+• Qaysi mutaxassis shifokorga borish kerak (nevrolog/ortoped/onkolog/pulmonolog va h.k.)
+• Qo'shimcha zarur tekshiruvlar (qon tahlillari, boshqa rasm usullari)
+• Davo yoki profilaktika yo'nalishlari
+• Darhol tibbiy yordam kerakmi — yoki rejalashtirilgan murojaat yetarlimi
+• Dinamik kuzatuvga olish zarurmi]
 
-Ответ ТОЛЬКО в этом формате:
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚕️ _Muhim: Bu Radiology AI sun'iy intellekti tomonidan tayyorlangan tahlil bo'lib, rasmiy tibbiy tashxis emas. Aniq tashxis, davo rejasi va dori buyurish uchun albatta litsenziyali shifokorga murojaat qiling._""",
 
-🖼 *Тип снимка:*
-[МРТ / КТ / Рентген / УЗИ; укажите орган/область]
+        "ru": f"""Вы — профессор-радиолог с 25-летним клиническим опытом. {age_note_ru}
 
-🔬 *Видимые анатомические структуры:*
-[Кости, суставы, ткани, органы, сосуды]
+Вам был отправлен медицинский снимок. Проведите анализ на высшем профессиональном уровне.
 
-📋 *Находки:*
-[Размеры, плотность, контуры, симметрия, изменения]
+ВАЖНЫЕ ПРАВИЛА:
+- В каждом разделе пишите МИНИМУМ 3-5 конкретных предложений
+- Никаких общих пустых фраз — давайте точную клиническую информацию
+- Сравнивайте показатели с нормой
+- Пациент должен получить ПОЛНОЕ понимание своего состояния
+- Медицинские термины объясняйте простыми словами
 
-⚠️ *Патологические изменения:*
-[Признаки патологии или "Значимой патологии не выявлено"]
+Напишите полный подробный ответ в следующем формате:
 
-🩺 *Предварительный диагноз:*
-[Наиболее вероятные состояния с вероятностью]
+━━━━━━━━━━━━━━━━━━━━━━━━
+🖼 *ТИП СНИМКА И ОБЛАСТЬ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Метод исследования (МРТ/КТ/Рентген/УЗИ), орган/область, проекция, контраст, качество снимка]
 
-💊 *Рекомендации:*
-[К какому специалисту; дополнительные исследования; срочность]
+━━━━━━━━━━━━━━━━━━━━━━━━
+🔬 *АНАТОМИЧЕСКИЕ СТРУКТУРЫ И ИХ СОСТОЯНИЕ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Описание каждой структуры отдельно:
+• Кости и суставы — форма, плотность, целостность
+• Мягкие ткани — объём, структура, границы
+• Органы — размер, контур, внутренняя структура
+• Сосуды и полости — размер, заполнение
+• Симметрия и положение]
 
-⚕️ _Важно: Это автоматический AI-анализ, не заменяет официальный медицинский диагноз. Обратитесь к врачу._""",
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *ДЕТАЛЬНЫЕ НАХОДКИ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Каждая находка с точным описанием:
+• Размеры (см, мм) и сравнение с нормой
+• Плотность или интенсивность сигнала (единицы HU или МРТ-сигнал)
+• Границы — чёткие/нечёткие, ровные/неровные
+• Форма — округлая/овальная/неправильная
+• Локализация — в каком отделе, относительно каких структур
+• Характер изменений — острые/хронические признаки]
 
-        "en": f"""You are an expert radiologist with 20 years of experience. Perform a {depth} analysis of this medical image.{age_note}
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *ПАТОЛОГИЧЕСКИЕ ИЗМЕНЕНИЯ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Все выявленные отклонения:
+• Образования или опухоли — размер, границы, характер
+• Признаки воспаления — отёк, инфильтрация, экссудат
+• Повреждения — трещины, переломы, дислокация
+• Состояние сосудов — сужение, расширение, тромбоз
+• Признаки компрессии — влияние на соседние органы
+• "Значимой патологии не выявлено" — только если действительно норма]
 
-Reply ONLY in this format:
+━━━━━━━━━━━━━━━━━━━━━━━━
+🩺 *ПРЕДВАРИТЕЛЬНЫЙ ДИАГНОЗ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Наиболее вероятные диагнозы с обоснованием:
+• На первом месте — наиболее вероятный диагноз с причиной
+• Дифференциальный диагноз — отличия
+• Третий вариант — при необходимости доп. исследований
+Каждый диагноз обоснован клиническими признаками]
 
-🖼 *Image Type:*
-[MRI / CT / X-Ray / Ultrasound; specify organ/region]
+━━━━━━━━━━━━━━━━━━━━━━━━
+💊 *КЛИНИЧЕСКИЕ РЕКОМЕНДАЦИИ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Конкретные практические рекомендации:
+• К какому специалисту обратиться (невролог/ортопед/онколог/пульмонолог и др.)
+• Дополнительные необходимые исследования (анализы крови, другие методы визуализации)
+• Направления лечения или профилактики
+• Нужна ли экстренная медицинская помощь или плановое обращение
+• Необходимость динамического наблюдения]
 
-🔬 *Visible Anatomical Structures:*
-[Bones, joints, tissues, organs, vessels]
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚕️ _Важно: Это анализ, подготовленный искусственным интеллектом Radiology AI, и не является официальным медицинским заключением. Для точного диагноза, плана лечения и назначения препаратов обязательно обратитесь к лицензированному врачу._""",
 
-📋 *Findings:*
-[Size, density, margins, symmetry, changes]
+        "en": f"""You are a professor-level radiologist with 25 years of clinical experience. {age_note_en}
 
-⚠️ *Pathological Changes:*
-[Signs of pathology or "No significant pathology detected"]
+A medical image has been sent to you. Analyze it at the highest professional level.
 
-🩺 *Preliminary Diagnosis:*
-[Most likely conditions with probability]
+IMPORTANT RULES:
+- Write MINIMUM 3-5 specific sentences in each section
+- No vague general statements — provide precise clinical information
+- Compare findings with normal values
+- The patient must gain a COMPLETE understanding of their condition
+- Explain medical terms in plain language
 
-💊 *Recommendations:*
-[Which specialist; additional studies; urgency]
+Write a full, detailed response in the following format:
 
-⚕️ _Note: This is an automated AI analysis and does not replace official medical diagnosis. Consult a physician._""",
+━━━━━━━━━━━━━━━━━━━━━━━━
+🖼 *IMAGE TYPE AND REGION*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Imaging modality (MRI/CT/X-Ray/Ultrasound), organ/region, projection, contrast use, image quality]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🔬 *ANATOMICAL STRUCTURES AND THEIR STATUS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Describe each visible structure separately:
+• Bones and joints — shape, density, integrity
+• Soft tissues — volume, structure, borders
+• Organs — size, contour, internal structure
+• Vessels and cavities — caliber, filling
+• Symmetry and position]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *DETAILED FINDINGS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Each finding with precise description:
+• Measurements (cm, mm) compared to normal values
+• Density or signal intensity (HU values or MRI signal characteristics)
+• Margins — well-defined/ill-defined, smooth/irregular
+• Shape — round/oval/irregular
+• Location — which segment, relative to anatomical landmarks
+• Nature of changes — acute/chronic signs]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *PATHOLOGICAL CHANGES*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[All identified abnormalities:
+• Masses or tumors — size, margins, characteristics
+• Inflammatory signs — edema, infiltration, effusion
+• Injuries — fractures, dislocations
+• Vascular status — stenosis, aneurysm, thrombosis
+• Compression signs — effect on adjacent organs
+• "No significant pathology detected" — only if genuinely normal]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🩺 *PRELIMINARY DIAGNOSIS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Most likely diagnoses with justification:
+• Primary diagnosis — most probable, with reasoning
+• Differential diagnosis — distinguishing features
+• Third possibility — if additional workup needed
+Each diagnosis supported by clinical findings]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+💊 *CLINICAL RECOMMENDATIONS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Specific practical recommendations:
+• Which specialist to consult (neurologist/orthopedist/oncologist/pulmonologist etc.)
+• Additional required investigations (blood tests, other imaging)
+• Treatment or prevention directions
+• Is emergency care needed or scheduled appointment sufficient
+• Need for dynamic monitoring]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚕️ _Important: This analysis was prepared by Radiology AI artificial intelligence and is not an official medical report. For accurate diagnosis, treatment planning and prescriptions, always consult a licensed physician._""",
     }
 
     prompt = prompts.get(lang, prompts["uz"])
     img_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
     payload = {
         "contents": [{"parts": [
             {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
             {"text": prompt}
         ]}],
-        "generationConfig": {"temperature": 0.15, "maxOutputTokens": 1800 if is_premium else 1200}
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 3000}
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -430,94 +575,209 @@ Reply ONLY in this format:
 
 # ─── GEMINI: MATN (PDF/DOCX) ──────────────────────────────────────────────────
 async def analyze_text_gemini(doc_text, lang, age="", is_premium=False):
-    depth = "CHUQUR va BATAFSIL" if is_premium else "asosiy"
-    age_note = f" Bemor yoshi: {age}." if age and age != "—" else ""
+    age_note_uz = f"Bemor yoshi: {age} yosh." if age and age != "—" else "Bemor yoshi ko'rsatilmagan."
+    age_note_ru = f"Возраст пациента: {age} лет." if age and age != "—" else "Возраст пациента не указан."
+    age_note_en = f"Patient age: {age} years old." if age and age != "—" else "Patient age not specified."
 
     prompts = {
-        "uz": f"""Siz mutaxassis tibbiyot eksperi sifatida quyidagi tibbiy hujjatni {depth} tahlil qiling.{age_note}
+        "uz": f"""Sen professor darajasidagi klinik tibbiyot mutaxassisi va radiologsan. {age_note_uz}
 
-Hujjat matni:
----
-{doc_text[:5000]}
----
+Senga quyidagi tibbiy hujjat taqdim etildi. Uni eng yuqori professional darajada tahlil qil.
 
-Javobingizni FAQAT quyidagi formatda yozing:
+MUHIM QOIDALAR:
+- Hujjatdagi BARCHA ma'lumotlarni ko'rib chiq
+- Har bir bo'limda KAM DEGANDA 3-5 ta aniq gap yoz
+- Ko'rsatkichlarni normal qiymatlar bilan taqqosla
+- Foydalanuvchi TO'LIQ tushuncha olishi kerak
+- Tibbiy terminlarni oddiy tilda izohlat
 
-📄 *Hujjat turi:*
-[MRT/MSKT/Rentgen xulosa, tahlil natijasi yoki boshqa tibbiy hujjat]
+HUJJAT MATNI:
+━━━━━━━━━━━━━━━━━━━━━━━━
+{doc_text[:6000]}
+━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 *Asosiy ma'lumotlar:*
-[Hujjatdagi barcha muhim ko'rsatkichlar, o'lchamlar, qiymatlar]
+Quyidagi formatda to'liq javob yoz:
 
-⚠️ *Patologik topilmalar:*
-[Normadan chiqish, kasallik belgilari — yoki "Belirgin patologiya aniqlanmadi"]
+━━━━━━━━━━━━━━━━━━━━━━━━
+📄 *HUJJAT TURI VA MAQSADI*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Hujjat nima: MRT/MSKT/Rentgen xulosa, qon tahlili, EKG, UZI xulosa yoki boshqa. Qaysi organ/sistema tekshirilgan. Tekshiruv sanasi va muassasa (agar ko'rsatilgan bo'lsa)]
 
-🩺 *Taxminiy tashxis:*
-[Hujjat asosida eng ehtimoliy holat]
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *BARCHA KO'RSATKICHLAR VA QIYMATLAR*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Hujjatdagi har bir ko'rsatkichni alohida tahlil qil:
+• Ko'rsatkich nomi — qiymati — normal diapazoni — baholash (normal/yuqori/past)
+• O'lchamlar va ularning klinik ahamiyati
+• Tasvirlovchi iboralar va ularning ma'nosi oddiy tilda
+• Hamma raqamli va sifatli ko'rsatkichlar]
 
-💊 *Tavsiyalar:*
-[Qaysi mutaxassisga murojaat; keyingi tekshiruvlar; darhol choralar]
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *NORMADAN CHETLANISHLAR*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Normadan chiqgan barcha ko'rsatkichlar:
+• Qaysi ko'rsatkich normadan qanchaga og'ib ketgan
+• Bu nima anglatadi — oddiy tilda tushuntir
+• Qanchalik jiddiy: engil/o'rtacha/jiddiy
+• Bir-biri bilan bog'liq o'zgarishlar
+• "Barcha ko'rsatkichlar normal chegarada" — faqat haqiqatan shunday bo'lsa]
 
-⚕️ _Bu AI tahlili bo'lib, rasmiy tibbiy tashxis emas. Shifokorga murojaat qiling._""",
+━━━━━━━━━━━━━━━━━━━━━━━━
+🩺 *TAXMINIY TASHXIS VA IZOHI*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Hujjat asosida:
+• Eng kuchli tashxis — klinik asosi bilan
+• Differensial tashxislar — farqlovchi belgilari bilan
+• Qo'shimcha tekshiruv talab qiluvchi holatlar
+• Agar hujjatda tayyor tashxis bo'lsa — uni izohla va oydinlashtir]
 
-        "ru": f"""Вы — медицинский эксперт. Проведите {depth} анализ документа.{age_note}
+━━━━━━━━━━━━━━━━━━━━━━━━
+💊 *AMALIY TAVSIYALAR*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Aniq va to'liq tavsiyalar:
+• Qaysi mutaxassis shifokorga darhol/rejalashtirilgan murojaat qilish kerak
+• Qo'shimcha zarur tekshiruvlar — nima uchun kerakligi bilan
+• Kundalik hayotda nimalarga e'tibor berish (ovqatlanish, jismoniy faollik, cheklovlar)
+• Dori-darmon haqida umumiy ma'lumot (aniq dori buyurmasdan)
+• Keyingi nazorat tekshiruvi qachon o'tkazilishi kerak]
 
-Текст:
----
-{doc_text[:5000]}
----
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚕️ _Muhim: Bu Radiology AI sun'iy intellekti tomonidan tayyorlangan tahlil bo'lib, rasmiy tibbiy tashxis emas. Aniq tashxis, davo rejasi va dori buyurish uchun albatta litsenziyali shifokorga murojaat qiling._""",
 
-Ответ ТОЛЬКО в формате:
+        "ru": f"""Вы — профессор-клиницист и радиолог высшей квалификации. {age_note_ru}
 
-📄 *Тип документа:*
-[МРТ/КТ/Рентген заключение, анализы или другой документ]
+Вам предоставлен медицинский документ для профессионального анализа.
 
-📋 *Ключевые данные:*
-[Все важные показатели, размеры, значения]
+ВАЖНЫЕ ПРАВИЛА:
+- Изучите ВСЕ данные документа
+- В каждом разделе пишите МИНИМУМ 3-5 конкретных предложений
+- Сравнивайте показатели с нормальными значениями
+- Пациент должен получить ПОЛНОЕ понимание
+- Объясняйте медицинские термины простым языком
 
-⚠️ *Патологические находки:*
-[Отклонения от нормы или "Значимой патологии не выявлено"]
+ТЕКСТ ДОКУМЕНТА:
+━━━━━━━━━━━━━━━━━━━━━━━━
+{doc_text[:6000]}
+━━━━━━━━━━━━━━━━━━━━━━━━
 
-🩺 *Предварительный диагноз:*
-[Наиболее вероятное состояние]
+Напишите полный ответ в формате:
 
-💊 *Рекомендации:*
-[К кому обратиться; дальнейшие исследования; срочность]
+━━━━━━━━━━━━━━━━━━━━━━━━
+📄 *ТИП ДОКУМЕНТА И ЦЕЛЬ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Что это: МРТ/КТ/Рентген заключение, анализы крови, ЭКГ, УЗИ или другое. Какой орган/система. Дата и учреждение (если указаны)]
 
-⚕️ _AI-анализ, не заменяет диагноз врача._""",
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *ВСЕ ПОКАЗАТЕЛИ И ЗНАЧЕНИЯ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Каждый показатель отдельно:
+• Название — значение — норма — оценка (норма/выше/ниже)
+• Размеры и их клиническое значение
+• Описательные термины и их значение простым языком
+• Все числовые и качественные показатели]
 
-        "en": f"""You are a medical expert. Perform a {depth} analysis of this document.{age_note}
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *ОТКЛОНЕНИЯ ОТ НОРМЫ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Все отклонившиеся показатели:
+• Какой показатель и насколько отклонился от нормы
+• Что это означает — простым языком
+• Степень серьёзности: лёгкая/умеренная/значительная
+• Взаимосвязанные изменения
+• "Все показатели в норме" — только если действительно так]
 
-Document:
----
-{doc_text[:5000]}
----
+━━━━━━━━━━━━━━━━━━━━━━━━
+🩺 *ПРЕДВАРИТЕЛЬНЫЙ ДИАГНОЗ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[На основании документа:
+• Основной диагноз — с клиническим обоснованием
+• Дифференциальные диагнозы — с отличительными признаками
+• Состояния, требующие доп. обследования
+• Если в документе готовый диагноз — объясните и уточните его]
 
-Reply ONLY in this format:
+━━━━━━━━━━━━━━━━━━━━━━━━
+💊 *ПРАКТИЧЕСКИЕ РЕКОМЕНДАЦИИ*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Конкретные и полные рекомендации:
+• К какому специалисту срочно/планово обратиться
+• Необходимые дополнительные исследования — с обоснованием
+• На что обращать внимание в повседневной жизни (питание, активность, ограничения)
+• Общая информация о лечении (без назначения конкретных препаратов)
+• Когда проходить следующий контрольный осмотр]
 
-📄 *Document Type:*
-[MRI/CT/X-Ray report, lab results or other]
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚕️ _Важно: Это анализ, подготовленный искусственным интеллектом Radiology AI, и не является официальным медицинским заключением. Для точного диагноза, плана лечения и назначения препаратов обязательно обратитесь к лицензированному врачу._""",
 
-📋 *Key Data:*
-[All important values, measurements, findings]
+        "en": f"""You are a professor-level clinician and radiologist. {age_note_en}
 
-⚠️ *Pathological Findings:*
-[Deviations from norm or "No significant pathology detected"]
+A medical document has been provided for your professional analysis.
 
-🩺 *Preliminary Diagnosis:*
-[Most likely condition]
+IMPORTANT RULES:
+- Review ALL data in the document
+- Write MINIMUM 3-5 specific sentences in each section
+- Compare values against normal ranges
+- Patient must gain COMPLETE understanding
+- Explain medical terms in plain language
 
-💊 *Recommendations:*
-[Which specialist; further tests; urgency]
+DOCUMENT TEXT:
+━━━━━━━━━━━━━━━━━━━━━━━━
+{doc_text[:6000]}
+━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚕️ _AI analysis, does not replace physician diagnosis._""",
+Write a full response in this format:
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📄 *DOCUMENT TYPE AND PURPOSE*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[What it is: MRI/CT/X-Ray report, blood work, ECG, ultrasound or other. Which organ/system. Date and facility (if indicated)]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 *ALL VALUES AND FINDINGS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Each parameter separately:
+• Name — value — normal range — assessment (normal/high/low)
+• Measurements and their clinical significance
+• Descriptive terms explained in plain language
+• All numerical and qualitative findings]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *DEVIATIONS FROM NORMAL*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[All abnormal values:
+• Which parameter and how much it deviates from normal
+• What this means — in plain language
+• Severity: mild/moderate/significant
+• Related changes
+• "All values within normal limits" — only if genuinely true]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🩺 *PRELIMINARY DIAGNOSIS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Based on the document:
+• Primary diagnosis — with clinical reasoning
+• Differential diagnoses — with distinguishing features
+• Conditions requiring further workup
+• If document has an existing diagnosis — explain and clarify it]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+💊 *PRACTICAL RECOMMENDATIONS*
+━━━━━━━━━━━━━━━━━━━━━━━━
+[Specific and complete recommendations:
+• Which specialist to see urgently/as scheduled
+• Additional required investigations — with rationale
+• What to monitor in daily life (diet, activity, restrictions)
+• General treatment information (without prescribing specific medications)
+• When to schedule next follow-up]
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+⚕️ _Important: This analysis was prepared by Radiology AI artificial intelligence and is not an official medical report. For accurate diagnosis, treatment planning and prescriptions, always consult a licensed physician._""",
     }
 
     prompt = prompts.get(lang, prompts["uz"])
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.15, "maxOutputTokens": 1800 if is_premium else 1200}
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 3000}
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
