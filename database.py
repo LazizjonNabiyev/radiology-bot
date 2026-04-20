@@ -5,14 +5,25 @@ import json, os
 from typing import Optional, Dict, Any, List
 from datetime import datetime, date
 
-# Persistent storage — Railway volume yoki local papka
-_DATA_DIR = os.getenv("DATA_DIR", "/data" if os.path.exists("/data") else ".")
+# Persistent storage
+# Railway da Volume ulash: Settings → Volumes → mount path: /data
+# Volume yo'q bo'lsa — bot ishlayotgan papkada saqlaydi
+def _get_data_dir():
+    # 1. Muhit o'zgaruvchisi berilgan bo'lsa
+    if os.getenv("DATA_DIR"):
+        d = os.getenv("DATA_DIR")
+        os.makedirs(d, exist_ok=True)
+        return d
+    # 2. Railway volume ulangan bo'lsa
+    if os.path.isdir("/data") and os.access("/data", os.W_OK):
+        return "/data"
+    # 3. Fallback — bot papkasi
+    return "."
+
+_DATA_DIR    = _get_data_dir()
 USERS_FILE   = os.path.join(_DATA_DIR, "users.json")
 REG_FILE     = os.path.join(_DATA_DIR, "reg_temp.json")
 HISTORY_FILE = os.path.join(_DATA_DIR, "history.json")
-
-# Data papkasini yaratish (yo'q bo'lsa)
-os.makedirs(_DATA_DIR, exist_ok=True)
 
 FREE_DAILY_LIMIT = 3   # kuniga bepul tahlil soni
 
