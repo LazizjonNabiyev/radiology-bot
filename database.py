@@ -5,9 +5,14 @@ import json, os
 from typing import Optional, Dict, Any, List
 from datetime import datetime, date
 
-USERS_FILE   = "users.json"
-REG_FILE     = "reg_temp.json"
-HISTORY_FILE = "history.json"
+# Persistent storage — Railway volume yoki local papka
+_DATA_DIR = os.getenv("DATA_DIR", "/data" if os.path.exists("/data") else ".")
+USERS_FILE   = os.path.join(_DATA_DIR, "users.json")
+REG_FILE     = os.path.join(_DATA_DIR, "reg_temp.json")
+HISTORY_FILE = os.path.join(_DATA_DIR, "history.json")
+
+# Data papkasini yaratish (yo'q bo'lsa)
+os.makedirs(_DATA_DIR, exist_ok=True)
 
 FREE_DAILY_LIMIT = 3   # kuniga bepul tahlil soni
 
