@@ -408,31 +408,44 @@ async def call_grok(prompt: str) -> str | None:
     """xAI Grok — Gemini ishlamasa zaxira"""
     if not GROK_API_KEY:
         return None
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROK_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": ""grok-4-1-fast-non-reasoning",   # bu yerga model nomini yozing
-    "grok-4-1-fast-reasoning",        # bu yerga ikkinchi model",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 8192,
-                    "temperature": 0.1
-                }
-            )
-        if r.status_code == 200:
-            text = r.json()["choices"][0]["message"]["content"]
-            logger.info("✅ Grok OK: grok-3-mini")
-            return text
-        logger.warning(f"Grok {r.status_code}: {r.text[:200]}")
-        return None
-    except Exception as e:
-        logger.warning(f"Grok xato: {e}")
-        return None
+
+    # Avval tez va arzon model, keyin kuchliroq
+    grok_models = [
+        "grok-4-1-fast-non-reasoning",   # $0.20/$0.50 — tez va arzon
+        "grok-4-1-fast-reasoning",        # $0.20/$0.50 — mantiqiy
+    ]
+
+    for model in grok_models:
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {GROK_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 8192,
+                        "temperature": 0.1
+                    }
+                )
+            if r.status_code == 200:
+                text = r.json()["choices"][0]["message"]["content"]
+                logger.info(f"✅ Grok OK: {model}")
+                return text
+            elif r.status_code in (429, 503, 500):
+                logger.warning(f"Grok {r.status_code}: {model} — keyingisi...")
+                continue
+            else:
+                logger.warning(f"Grok {r.status_code}: {model} — {r.text[:200]}")
+                continue
+        except Exception as e:
+            logger.warning(f"Grok {model} xato: {e}")
+            continue
+
+    return None
 
 
 async def call_openrouter(prompt: str) -> str | None:
@@ -441,8 +454,8 @@ async def call_openrouter(prompt: str) -> str | None:
         return None
     # OpenRouter da bepul modellar
     models = [
-        "meta-llama/llama-3.2-3b-instruct:free",
         "meta-llama/llama-3.3-70b-instruct:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
         "openai/gpt-oss-120b:free",
     ]
     for model in models:
