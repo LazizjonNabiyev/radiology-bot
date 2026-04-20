@@ -417,7 +417,8 @@ async def call_grok(prompt: str) -> str | None:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "grok-3-mini",
+                    "model": ""grok-4-1-fast-non-reasoning",   # bu yerga model nomini yozing
+    "grok-4-1-fast-reasoning",        # bu yerga ikkinchi model",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 8192,
                     "temperature": 0.1
