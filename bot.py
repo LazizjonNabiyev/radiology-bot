@@ -15,6 +15,12 @@ from telegram.ext import (
 from database import db, FREE_DAILY_LIMIT
 from queue_manager import AnalysisQueue
 
+# ─── DATA DIR — Railway persistent volume yoki local ─────────────────────────
+# Railway da: Settings → Volumes → /data papkasini ulashtiring
+# Shunda restart bo'lsa ham users.json yo'qolmaydi
+DATA_DIR = os.getenv("DATA_DIR", "/data" if os.path.exists("/data") else ".")
+
+
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -69,7 +75,7 @@ def t(lang, key, **kw):
             "menu_profile":  "👤 Profilim",
             "menu_contact":  "📞 Aloqa",
             # Tahlil
-            "send_file":     "📸 *Tahlil uchun fayl yuboring:*\n\n• MRT, MSKT, Rentgen rasmi\n• PDF yoki rasm hujjat\n\n📌 Aniq va sifatli rasm yuborish tavsiya etiladi.",
+            "send_file":     "📸 *Tahlil uchun fayl yuboring:*\n\n• MRT, MSKT, Rentgen rasmi\n• PDF yoki Word hujjat\n\n📌 Aniq va sifatli rasm yuborish tavsiya etiladi.",
             "in_queue":      "⏳ *Navbatga qo'shildi!*\n🔢 Navbatingiz: *#{pos}*\n\nBirozdan keyin natija yuboriladi ⏱",
             "processing":    "🔬 *Tahlil qilinmoqda...*\n\nIltimos kuting, bu bir necha soniya oladi.",
             "error":         "❌ Xatolik yuz berdi. Qayta urinib ko'ring.",
@@ -155,7 +161,7 @@ def t(lang, key, **kw):
             "menu_history":  "📋 История",
             "menu_profile":  "👤 Мой профиль",
             "menu_contact":  "📞 Контакт",
-            "send_file":     "📸 *Отправьте файл для анализа:*\n\n• Снимок МРТ, КТ, Рентген\n• PDF или Изображение документ\n\n📌 Рекомендуется отправлять чёткие снимки.",
+            "send_file":     "📸 *Отправьте файл для анализа:*\n\n• Снимок МРТ, КТ, Рентген\n• PDF или Word документ\n\n📌 Рекомендуется отправлять чёткие снимки.",
             "in_queue":      "⏳ *Добавлено в очередь!*\n🔢 Ваш номер: *#{pos}*\n\nРезультат придёт скоро ⏱",
             "processing":    "🔬 *Анализируется...*\n\nПожалуйста, подождите.",
             "error":         "❌ Произошла ошибка. Попробуйте снова.",
@@ -235,7 +241,7 @@ def t(lang, key, **kw):
             "menu_history":  "📋 History",
             "menu_profile":  "👤 My Profile",
             "menu_contact":  "📞 Contact",
-            "send_file":     "📸 *Send file for analysis:*\n\n• MRI, CT, X-Ray image\n• PDF or Picture document\n\n📌 Clear, high-quality images recommended.",
+            "send_file":     "📸 *Send file for analysis:*\n\n• MRI, CT, X-Ray image\n• PDF or Word document\n\n📌 Clear, high-quality images recommended.",
             "in_queue":      "⏳ *Added to queue!*\n🔢 Your position: *#{pos}*\n\nResult coming soon ⏱",
             "processing":    "🔬 *Analyzing...*\n\nPlease wait a moment.",
             "error":         "❌ An error occurred. Please try again.",
@@ -331,6 +337,176 @@ async def send_main_menu(bot_or_msg, user_id, lang, user_data, send_fn):
              today=today,
              limit=FREE_DAILY_LIMIT)
     await send_fn(text, reply_markup=main_menu_kb(lang), parse_mode="Markdown")
+
+
+# ─── AI PROVIDER CONFIG ───────────────────────────────────────────────────────
+# .env / Railway Variables:
+# GEMINI_API_KEY   = AIzaSy...        (Google AI Studio — bepul)
+# GROK_API_KEY     = xai-...          (x.ai — $25 kredit bepul)
+# OPENROUTER_KEY   = sk-or-...        (openrouter.ai — $1 kredit bepul)
+
+GEMINI_MODELS = [
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash",
+]
+
+GROK_API_KEY      = os.getenv("GROK_API_KEY", "")
+OPENROUTER_KEY    = os.getenv("OPENROUTER_KEY", "")
+
+
+async def call_gemini_text(prompt: str) -> str | None:
+    """Gemini — matn uchun"""
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
+    }
+    return await _gemini_request(payload)
+
+
+async def call_gemini_image(img_b64: str, prompt: str) -> str | None:
+    """Gemini — rasm uchun"""
+    payload = {
+        "contents": [{"parts": [
+            {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
+            {"text": prompt}
+        ]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
+    }
+    return await _gemini_request(payload)
+
+
+async def _gemini_request(payload: dict) -> str | None:
+    base_url = "https://generativelanguage.googleapis.com/v1beta/models"
+    for model in GEMINI_MODELS:
+        url = f"{base_url}/{model}:generateContent?key={GEMINI_API_KEY}"
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(url, json=payload)
+            if r.status_code == 200:
+                text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                logger.info(f"✅ Gemini OK: {model}")
+                return text
+            elif r.status_code in (503, 429, 500, 502):
+                logger.warning(f"Gemini {r.status_code}: {model} — keyingisi...")
+                await asyncio.sleep(1)
+                continue
+            elif r.status_code == 400:
+                logger.error(f"Gemini 400: {r.text[:300]}")
+                return None
+            else:
+                logger.warning(f"Gemini {r.status_code}: {model}")
+                continue
+        except Exception as e:
+            logger.warning(f"Gemini {model} xato: {e}")
+            continue
+    logger.warning("Barcha Gemini modellari ishlamadi — Grok sinab ko'riladi")
+    return None
+
+
+async def call_grok(prompt: str) -> str | None:
+    """xAI Grok — Gemini ishlamasa zaxira"""
+    if not GROK_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            r = await client.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROK_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "grok-3-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 8192,
+                    "temperature": 0.1
+                }
+            )
+        if r.status_code == 200:
+            text = r.json()["choices"][0]["message"]["content"]
+            logger.info("✅ Grok OK: grok-3-mini")
+            return text
+        logger.warning(f"Grok {r.status_code}: {r.text[:200]}")
+        return None
+    except Exception as e:
+        logger.warning(f"Grok xato: {e}")
+        return None
+
+
+async def call_openrouter(prompt: str) -> str | None:
+    """OpenRouter — Gemini va Grok ham ishlamasa"""
+    if not OPENROUTER_KEY:
+        return None
+    # OpenRouter da bepul modellar
+    models = [
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "openai/gpt-oss-120b:free",
+    ]
+    for model in models:
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_KEY}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://radiology-ai-bot.app",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 8192,
+                        "temperature": 0.1
+                    }
+                )
+            if r.status_code == 200:
+                text = r.json()["choices"][0]["message"]["content"]
+                logger.info(f"✅ OpenRouter OK: {model}")
+                return text
+            logger.warning(f"OpenRouter {r.status_code}: {model}")
+            continue
+        except Exception as e:
+            logger.warning(f"OpenRouter {model} xato: {e}")
+            continue
+    return None
+
+
+async def call_ai(prompt: str, img_b64: str = None) -> str | None:
+    """
+    Asosiy AI chaqiruv funksiyasi.
+    Tartib: Gemini → Grok → OpenRouter
+    """
+    # 1. Gemini
+    if GEMINI_API_KEY:
+        if img_b64:
+            result = await call_gemini_image(img_b64, prompt)
+        else:
+            result = await call_gemini_text(prompt)
+        if result:
+            return result
+
+    # 2. Grok (rasm bo'lsa ishlamaydi — faqat matn)
+    if GROK_API_KEY and not img_b64:
+        result = await call_grok(prompt)
+        if result:
+            return result
+
+    # 3. OpenRouter
+    if OPENROUTER_KEY:
+        result = await call_openrouter(prompt)
+        if result:
+            return result
+
+    logger.error("Hech qaysi AI provider ishlamadi!")
+    return None
+
+
+# Eski nom bilan mos kelishi uchun (worker ishlatadi)
+async def call_gemini(payload: dict, timeout: float = 120.0) -> str | None:
+    return await _gemini_request(payload)
+
 
 # ─── GEMINI: RASM ─────────────────────────────────────────────────────────────
 async def analyze_image_gemini(image_bytes, lang, age="", is_premium=False):
@@ -565,32 +741,7 @@ Each diagnosis supported by clinical findings]
 
     prompt = prompts.get(lang, prompts["uz"])
     img_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-
-    payload = {
-        "contents": [{"parts": [
-            {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
-            {"text": prompt}
-        ]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
-    }
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        r = await client.post(url, json=payload)
-
-    if r.status_code == 200:
-        try:
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            logger.error(f"Gemini image parse: {e}")
-            return None
-    if r.status_code == 429:
-        logger.error("Gemini RATE LIMIT (429) — kunlik limit tugagan yoki minutiga ko'p so'rov")
-    elif r.status_code == 400:
-        logger.error(f"Gemini BAD REQUEST (400): {r.text[:500]}")
-    else:
-        logger.error(f"Gemini image API: {r.status_code} {r.text[:300]}")
-    return None
+    return await call_ai(prompt, img_b64=img_b64)
 
 # ─── GEMINI: MATN (PDF/DOCX) ──────────────────────────────────────────────────
 async def analyze_text_gemini(doc_text, lang, age="", is_premium=False):
@@ -800,21 +951,7 @@ Write a full response in this format:
     }
 
     prompt = prompts.get(lang, prompts["uz"])
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
-    }
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        r = await client.post(url, json=payload)
-
-    if r.status_code == 200:
-        try:
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            logger.error(f"Gemini text parse: {e}")
-            return None
+    return await call_ai(prompt)
     if r.status_code == 429:
         logger.error("Gemini RATE LIMIT (429) — kunlik limit tugagan yoki minutiga ko'p so'rov")
     elif r.status_code == 400:
@@ -1159,7 +1296,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                or name.lower().endswith((".pdf",".doc",".docx")))
     if not allowed:
         await update.message.reply_text(
-            "⚠️ Faqat PDF yoki Rasm (DOC/DOCX) hujjatlar.\n📸 Rasm uchun galereya orqali yuboring.")
+            "⚠️ Faqat PDF yoki Word (DOC/DOCX) hujjatlar.\n📸 Rasm uchun galereya orqali yuboring.")
         return
     pos = await queue.add_to_queue(
         user_id=update.message.from_user.id, message=update.message,
